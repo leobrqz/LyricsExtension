@@ -1,0 +1,9 @@
+node_modules/
+dist/
+artifacts/
+/docs/
+.test-build/
+.test-profile/
+geckodriver.log
+*.log
+.DS_Store
