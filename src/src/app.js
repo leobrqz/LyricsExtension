@@ -1,8 +1,8 @@
 import { el, icon } from './dom.js';
-import { t, initialPreferences, languageName, translationLanguages } from './i18n.js';
-import { searchSongs, getLyrics } from './api.js';
+import { t, initialPreferences } from './i18n.js';
+import { searchSongs } from './api.js';
+import { getSongLyrics, getPublishedTranslation, letrasTitleMatches } from './letras.js';
 import { filterFavorites, lyricLines, confidentMatch, matchedVideo, youtubeDestination, youtubeVideoUrl } from './model.js';
-import { detectLanguage, translateLines } from './translation.js';
 
 const root = document.getElementById('app');
 const toastElement = document.getElementById('toast');
@@ -25,6 +25,8 @@ const rpc = (type, payload = {}) => browser.runtime.sendMessage({ type, ...paylo
 const text = (key, values) => t(state?.preferences.locale || initialPreferences(navigator.language).locale, key, values);
 const main = () => document.getElementById('content');
 const isFavorite = song => state.favorites.some(item => item.song.key === song.key);
+const differentLetrasVersion = (reader, song = reader?.song) => reader?.provider?.name === 'letras'
+  && reader.provider.title && song?.title && !letrasTitleMatches(song.title, reader.provider.title);
 
 function button(label, handler, { name, className = 'button', id, pressed, disabled = false } = {}) {
   return el('button', { type: 'button', className, id, title: label, 'aria-label': label,
@@ -251,10 +253,11 @@ function renderFavorites() {
 
 async function openSong(song, from, { refresh = false } = {}) {
   captureScroll(); abortRequests();
-  const cached = !refresh && state.favorites.find(item => item.song.key === song.key)?.reader;
-  const videoUrl = (from === 'search' && matchedVideo(song, state.session.origin)) || song.videoUrl || cached?.song.videoUrl;
-  const reader = cached?.lyrics ? { ...structuredClone(cached), from, song: { ...song, videoUrl }, translationVisible: false, target: state.preferences.translationTarget, cached: true }
-    : { song: { ...song, videoUrl }, from, lyrics: '', source: '', target: state.preferences.translationTarget, translationVisible: false, translations: {}, status: 'loading', cached: false };
+  let cached = refresh ? null : state.favorites.find(item => item.song.key === song.key)?.reader;
+  if (differentLetrasVersion(cached, song)) cached = null;
+  const videoUrl = (from === 'search' && matchedVideo(song, state.session.origin)) || song.videoUrl || cached?.song?.videoUrl;
+  const reader = cached?.lyrics ? { ...structuredClone(cached), from, song: { ...song, videoUrl }, translationVisible: false, cached: true }
+    : { song: { ...song, videoUrl }, from, lyrics: '', provider: null, translationVisible: false, translation: null, status: 'loading', cached: false };
   state.session.reader = reader;
   state.session.view = 'reader'; state.session.readerScroll = 0;
   render({ scroll: 0 });
@@ -262,9 +265,9 @@ async function openSong(song, from, { refresh = false } = {}) {
   if (reader.lyrics) { reader.status = 'ready'; return; }
   const controller = new AbortController(); lyricsController = controller;
   try {
-    const lyrics = await getLyrics(song, { signal: controller.signal });
+    const result = await getSongLyrics(song, { signal: controller.signal });
     if (controller.signal.aborted || state.session.reader !== reader) return;
-    reader.lyrics = lyrics; reader.source = detectLanguage(lyrics); reader.status = 'ready';
+    reader.lyrics = result.lyrics; reader.provider = result.provider; reader.status = 'ready';
     await saveSession();
     await cacheFavorite(reader);
     render();
@@ -282,8 +285,12 @@ function renderReader() {
   const heading = el('div', { className: 'reader-heading' }, el('p', { className: 'eyebrow' }, text('lyricsLabel')),
     el('h1', { id: 'song-title' }, song.title), el('p', { className: 'reader-artist' }, song.artist));
   if (reader.status === 'ready' && reader.lyrics) {
-    heading.append(el('p', { className: 'reader-source', id: 'lyrics-source' }, text('lyricSource'), ' ',
-      externalLink('lyrics.ovh', 'https://lyrics.ovh/', 'source-link')));
+    const fromLetras = reader.provider?.name === 'letras';
+    const source = el('div', { className: 'reader-source', id: 'lyrics-source' }, text(fromLetras ? 'lyricSource' : 'lyricVia'), ' ',
+      externalLink(fromLetras ? 'Letras.mus.br' : 'lyrics.ovh', reader.provider?.url || 'https://lyrics.ovh/', 'source-link'));
+    if (!fromLetras) source.append(el('span', { className: 'source-detail' }, text('sourceUnknown')),
+      button(text('tryLetras'), () => openSong(song, reader.from, { refresh: true }), { name: 'refresh', className: 'source-retry', id: 'source-retry' }));
+    heading.append(source);
   }
   const view = el('section', { className: 'view reader' },
     button(text('back'), () => navigate(reader.from || 'search'), { name: 'back', className: 'back-button', id: 'reader-back' }),
@@ -302,37 +309,19 @@ function renderReader() {
   }
   if (reader.translationVisible) view.append(translationPanel(reader));
   const lines = lyricLines(reader.lyrics);
-  const translated = reader.translationVisible ? reader.translations[`${reader.source}|${reader.target}`]?.lines : null;
+  const translated = reader.translationVisible ? reader.translation?.lines : null;
   view.append(el('div', { className: 'lyrics', id: 'lyrics', 'aria-label': text('lyricsLabel') }, lines.map((line, index) =>
     el('div', { className: `lyric-line ${line.trim() ? '' : 'blank'}`, 'data-line-index': index },
-      line.trim() && el('p', { className: 'original', lang: reader.source || undefined }, line),
-      translated?.[index] && el('p', { className: 'translation', lang: reader.target }, translated[index])))));
+      line.trim() && el('p', { className: 'original' }, line),
+      translated?.[index] && el('p', { className: 'translation', lang: 'pt' }, translated[index])))));
   if (reader.cached) view.append(el('footer', { className: 'source' }, text('offlineFavorite')));
   return view;
 }
 
-function languageSelect(id, value, options, onChange, placeholder) {
-  const select = el('select', { id, onChange });
-  if (placeholder) select.append(el('option', { value: '' }, text('chooseLanguage')));
-  options.forEach(code => select.append(el('option', { value: code }, languageName(code, state.preferences.locale))));
-  select.value = value;
-  return select;
-}
-
 function translationPanel(reader) {
   const panel = el('div', { className: 'translation-panel' });
-  const source = languageSelect('source-language', reader.source, translationLanguages, event => {
-    translationController?.abort(); reader.source = event.target.value; scheduleSave(); render(); startTranslation();
-  }, !reader.source);
-  const target = languageSelect('target-language', reader.target, ['pt', 'en'], async event => {
-    translationController?.abort(); reader.target = event.target.value;
-    try { state.preferences = await rpc('PREFERENCES', { value: { translationTarget: reader.target } }); }
-    catch { toast('storageError'); }
-    scheduleSave(); render(); startTranslation();
-  });
-  panel.append(el('div', { className: 'language-pair' }, el('label', { className: 'field', for: 'source-language' }, text('translateFrom'), source), icon('arrow'),
-    el('label', { className: 'field', for: 'target-language' }, text('translateTo'), target)),
-  el('p', { className: 'translation-caption' }, externalLink(text('automaticTranslation'), 'https://mymemory.translated.net/', '')),
+  panel.append(el('p', { className: 'translation-caption' }, text('publishedTranslation'), ' · ',
+    externalLink('Letras.mus.br', reader.translation?.url || (reader.provider?.name === 'letras' ? reader.provider.url : 'https://www.letras.mus.br/'), '')),
   el('div', { id: 'translation-status', className: 'translation-status', role: 'status' }));
   const status = panel.querySelector('#translation-status');
   renderTranslationStatus(status, reader);
@@ -340,17 +329,14 @@ function translationPanel(reader) {
 }
 
 function renderTranslationStatus(container, reader) {
-  const current = reader.translations[`${reader.source}|${reader.target}`];
   container.replaceChildren();
-  if (!reader.source) container.append(text('unknownLanguage'));
-  else if (reader.source === reader.target) container.append(text('sameLanguage'));
-  else if (reader.translating) {
-    const total = lyricLines(reader.lyrics).filter(line => line.trim()).length;
-    const done = current?.lines.filter(Boolean).length || 0;
-    container.append(text('translating', { done, total }));
-  } else if (current && !current.complete) {
-    container.append(el('p', {}, text(current.error === 'quota' ? 'translationQuota' : 'translationPartial')),
+  if (reader.translating) container.append(text('loadingTranslation'));
+  else if (reader.translationError) {
+    const key = ['translationNotFound', 'translationMismatch'].includes(reader.translationError) ? reader.translationError : 'translationUnavailable';
+    container.append(el('p', {}, text(key)),
       button(text('retry'), startTranslation, { name: 'refresh', id: 'retry-translation' }));
+    if (reader.provider?.name !== 'letras') container.append(' ',
+      button(text('reloadLyrics'), () => openSong(reader.song, reader.from, { refresh: true }), { name: 'refresh', id: 'reload-lyrics' }));
   }
 }
 
@@ -364,46 +350,25 @@ function toggleTranslation() {
 
 async function startTranslation() {
   const reader = state.session.reader;
-  if (!reader?.translationVisible || !reader.source || reader.source === reader.target) return;
+  if (!reader?.translationVisible) return;
   translationController?.abort();
   const controller = new AbortController(); translationController = controller;
-  const key = `${reader.source}|${reader.target}`;
-  if (reader.translations[key]?.complete) { reader.translating = false; render(); return; }
-  reader.translating = true;
-  reader.translations[key] ||= { lines: [], complete: false };
+  if (reader.translation?.provider === 'letras') { reader.translating = false; render(); return; }
+  reader.translating = true; reader.translationError = null;
   render();
   try {
-    const result = await translateLines(lyricLines(reader.lyrics), reader.source, reader.target, {
-      signal: controller.signal, cached: reader.translations[key].lines,
-      onProgress: lines => {
-        if (controller.signal.aborted || state.session.reader !== reader) return;
-        reader.translations[key].lines = lines;
-        scheduleSave();
-        if (reader.translationVisible && `${reader.source}|${reader.target}` === key) updateTranslationLines(reader, lines);
-      },
-    });
+    const result = await getPublishedTranslation(reader, { signal: controller.signal });
     if (controller.signal.aborted || state.session.reader !== reader) return;
-    reader.translations[key] = result; reader.translating = false;
+    reader.translation = result; reader.translating = false;
+    reader.translationError = result ? null : 'translationNotFound';
     await saveSession(); await cacheFavorite(reader);
     render();
   } catch (error) {
-    if (error.name === 'AbortError') return;
+    if (error.name === 'AbortError' || controller.signal.aborted || state.session.reader !== reader) return;
     reader.translating = false;
-    reader.translations[key].error = error.code || 'translationPartial';
+    reader.translationError = error.code || 'translationUnavailable';
     scheduleSave(); render();
   }
-}
-
-function updateTranslationLines(reader, lines) {
-  const anchor = readingAnchor();
-  lines.forEach((line, index) => {
-    if (!line) return;
-    const wrapper = document.querySelector(`[data-line-index="${index}"]`);
-    if (wrapper && !wrapper.querySelector('.translation')) wrapper.append(el('p', { className: 'translation', lang: reader.target }, line));
-  });
-  const status = document.getElementById('translation-status');
-  if (status) renderTranslationStatus(status, reader);
-  restoreAnchor(anchor);
 }
 
 async function changeFavorite(song, reader, enabled) {
@@ -429,19 +394,14 @@ function renderSettings() {
     catch { toast('storageError'); }
   } }, el('option', { value: 'pt-BR' }, 'Português (Brasil)'), el('option', { value: 'en' }, 'English'));
   localeSelect.value = state.preferences.locale;
-  const target = languageSelect('preferred-translation', state.preferences.translationTarget, ['pt', 'en'], async event => {
-    try { state.preferences = await rpc('PREFERENCES', { value: { translationTarget: event.target.value } }); render(); }
-    catch { toast('storageError'); }
-  });
   return el('section', { className: 'view' },
     button(text('back'), () => navigate(settingsFrom), { name: 'back', className: 'back-button' }), intro(text('settings'), text('preferenceIntro')),
-    el('div', { className: 'settings-fields' }, el('label', { className: 'field', for: 'interface-language' }, text('language'), localeSelect),
-      el('label', { className: 'field', for: 'preferred-translation' }, text('translationPreference'), target)),
+    el('div', { className: 'settings-fields' }, el('label', { className: 'field', for: 'interface-language' }, text('language'), localeSelect)),
     el('section', { className: 'settings-section' }, el('h2', {}, text('about')), el('p', {}, text('aboutText')),
       externalLink(text('repository'), 'https://github.com/leobrqz/LyricsExtension'), el('span', { className: 'version' }, `v${browser.runtime.getManifest().version}`)),
     el('section', { className: 'settings-section' }, el('h2', {}, text('privacy')), el('p', {}, text('privacyText')), el('p', { className: 'small' }, text('storedData'))),
     el('section', { className: 'settings-section' }, el('h2', {}, text('services')), externalLink('lyrics.ovh', 'https://github.com/NTag/lyrics.ovh'),
-      externalLink('MyMemory', 'https://mymemory.translated.net/'), el('p', { className: 'small' }, text('translationLimits'))));
+      externalLink('Letras.mus.br', 'https://www.letras.mus.br/'), el('p', { className: 'small' }, text('contentSources'))));
 }
 
 async function boot() {
@@ -456,9 +416,9 @@ async function boot() {
     lastView = undefined;
     render({ focus: state.session.view === 'search' });
     if (state.session.view === 'search' && state.session.query.trim() && (!state.session.results.length || state.session.autoOpen)) runSearch();
-    if (state.session.view === 'reader' && state.session.reader?.status === 'loading') {
+    if (state.session.view === 'reader' && (state.session.reader?.status === 'loading' || differentLetrasVersion(state.session.reader))) {
       const reader = state.session.reader;
-      openSong(reader.song, reader.from);
+      openSong(reader.song, reader.from, { refresh: true });
     }
   } catch {
     root.setAttribute('aria-busy', 'false');

@@ -1,6 +1,6 @@
 {
   "name": "lyrics-extension",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Find, read, translate and save song lyrics in Firefox.",
   "type": "module",
@@ -19,9 +19,6 @@
     "package": "npm run build && web-ext build --source-dir dist --artifacts-dir artifacts --overwrite-dest",
     "release:prepare": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_release.ps1",
     "release:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1"
-  },
-  "dependencies": {
-    "franc-min": "^6.2.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

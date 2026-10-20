@@ -20,7 +20,7 @@ const message = (type, payload = {}) => driver.executeScript('return browser.run
 
 before(async () => {
   server = await fixtureServer();
-  await buildExtension({ outdir: output, apiBase: server.base, translationBase: server.base });
+  await buildExtension({ outdir: output, apiBase: server.base, letrasBase: server.base });
   driver = await startFirefox(output, { profile });
   await mkdir(path.join(projectRoot, 'artifacts'), { recursive: true });
 });
@@ -28,7 +28,7 @@ before(async () => {
 after(async () => { if (driver) await driver.quit(); if (server) await server.close(); });
 
 beforeEach(async () => {
-  server.setUnavailable(false); server.setTranslationFailure(null);
+  server.setUnavailable(false); server.setTranslationFailure(null); server.setLetrasUnavailable(false); server.setWrongAlias(false);
   await driver.setContext(firefox.Context.CONTENT);
   const handles = await driver.getAllWindowHandles();
   for (const handle of handles.slice(1)) { await driver.switchTo().window(handle); await driver.close(); }
@@ -36,7 +36,7 @@ beforeEach(async () => {
   await openExtension(driver);
   const snapshot = await message('BOOT');
   for (const favorite of snapshot.favorites) await message('FAVORITE', { song: favorite.song, enabled: false });
-  await message('PREFERENCES', { value: { locale: 'pt-BR', translationTarget: 'pt' } });
+  await message('PREFERENCES', { value: { locale: 'pt-BR' } });
   await (await element('#nav-favorites')).click();
   await driver.executeScript('const input=document.getElementById("search-input");input.value="";input.dispatchEvent(new Event("input",{bubbles:true}));');
   await (await element('#nav-search')).click();
@@ -65,6 +65,9 @@ test('title-only search updates without Enter, opens originals, and preserves th
   assert.equal(await (await element('#song-title')).getText(), 'Window Songs');
   assert.equal((await elements('.translation')).length, 0);
   assert.equal((await elements('.original')).length, sampleLyrics.split('\n').filter(Boolean).length);
+  assert.equal(await (await element('#lyrics-source a')).getAttribute('href'), 'https://www.letras.mus.br/night-letters/window-songs/');
+  assert.ok(!server.requests.some(url => url.startsWith('/v1/')), 'Letras is fetched directly');
+  assert.ok(!server.requests.some(url => url.endsWith('traducao.html')), 'translations are fetched on request');
   await (await element('#reader-back')).click();
   assert.equal(await (await element('#search-input')).getAttribute('value'), 'Window');
   assert.equal((await elements('.song-open')).length, 3);
@@ -77,6 +80,21 @@ test('latest query wins when an older request finishes later', async () => {
   await pause(1050);
   assert.equal(await (await element('.song-title')).getText(), 'Newer Result');
   assert.equal(await (await element('#search-input')).getAttribute('value'), 'newer');
+});
+
+test('a title alias pointing to another version is resolved through the artist catalog', async () => {
+  server.setWrongAlias(true);
+  await readSong();
+  assert.equal(await (await element('#lyrics-source a')).getAttribute('href'), 'https://www.letras.mus.br/night-letters/123/');
+  assert.ok(server.requests.includes('/night-letters/'));
+  assert.ok(!server.requests.some(url => url.startsWith('/v1/')));
+  const snapshot = await message('BOOT');
+  await message('FAVORITE', { song: snapshot.session.reader.song, enabled: true, reader: {
+    ...snapshot.session.reader, provider: { name: 'letras', title: 'Window Songs (Pepsi Version)', url: 'https://www.letras.mus.br/night-letters/window-songs/' },
+  } });
+  await openExtension(driver);
+  await (await element('#nav-favorites')).click(); await (await element('.song-open')).click(); await waitFor('#lyrics .original');
+  assert.equal((await message('BOOT')).session.reader.provider.title, 'Window Songs');
 });
 
 test('composing text with an input method is preserved until the composition finishes', async () => {
@@ -109,13 +127,13 @@ test('lyrics and cached translations remain readable from favorites without the 
   await (await element('#translation-toggle')).click();
   const nonemptyLines = sampleLyrics.split('\n').filter(Boolean).length;
   await driver.wait(async () => (await elements('.translation')).length === nonemptyLines, 9000);
-  await driver.wait(async () => (await message('BOOT')).favorites[0].reader.translations['en|pt']?.complete, 5000);
+  await driver.wait(async () => (await message('BOOT')).favorites[0].reader.translation?.provider === 'letras', 5000);
   const first = await element('[data-line-index="0"]');
   assert.equal(await first.findElement(By.css('.original')).getText(), 'The rain is singing at my window');
   assert.equal(await first.findElement(By.css('.translation')).getText(), 'A chuva canta na minha janela');
   assert.equal((await elements('[data-line-index="4"] .translation')).length, 0);
-  const translationQueries = server.requests.filter(url => url.startsWith('/get?'));
-  assert.equal(translationQueries.length, new Set(sampleLyrics.split('\n').filter(Boolean)).size);
+  const translationQueries = server.requests.filter(url => url.endsWith('/traducao.html'));
+  assert.equal(translationQueries.length, 1);
   await writeFile('artifacts/translation.png', await driver.takeScreenshot(), 'base64');
   await (await element('#nav-favorites')).click();
   await (await element('#search-input')).sendKeys('night wind');
@@ -147,25 +165,40 @@ test('favorite removal is reversible and favorites filtering never searches the 
   assert.equal((await message('BOOT')).favorites.length, 1);
 });
 
-test('translation quota errors preserve the complete original and offer recovery', async () => {
-  await readSong(); server.setTranslationFailure('quota');
+test('a failed published translation keeps the original and can be retried', async () => {
+  await readSong(); server.setTranslationFailure('unavailable');
   await (await element('#translation-toggle')).click();
   await waitFor('#retry-translation');
-  assert.match(await (await element('#translation-status')).getText(), /limite diário/);
+  assert.match(await (await element('#translation-status')).getText(), /não está disponível/);
   assert.equal((await elements('.original')).length, sampleLyrics.split('\n').filter(Boolean).length);
   server.setTranslationFailure(null);
   await (await element('#retry-translation')).click();
   await driver.wait(async () => (await elements('.translation')).length === sampleLyrics.split('\n').filter(Boolean).length, 9000);
 });
 
-test('same-language translation requests are explained without contacting the translator', async () => {
-  await readSong(); await (await element('#translation-toggle')).click();
-  await driver.wait(async () => (await elements('.translation')).length === sampleLyrics.split('\n').filter(Boolean).length, 9000);
-  const count = server.requests.filter(url => url.startsWith('/get?')).length;
-  await driver.executeScript('const select=document.getElementById("target-language");select.value="en";select.dispatchEvent(new Event("change",{bubbles:true}));');
-  await driver.wait(() => driver.executeScript('return document.getElementById("translation-status")?.textContent.includes("já está");'), 5000);
+test('a missing published translation never displays the original as a translation', async () => {
+  await readSong(); server.setTranslationFailure('missing');
+  await (await element('#translation-toggle')).click();
+  await waitFor('#retry-translation');
+  assert.match(await (await element('#translation-status')).getText(), /Não encontramos/);
   assert.equal((await elements('.translation')).length, 0);
-  assert.equal(server.requests.filter(url => url.startsWith('/get?')).length, count);
+  assert.equal((await elements('.original')).length, sampleLyrics.split('\n').filter(Boolean).length);
+});
+
+test('lyrics.ovh supplies the original when Letras is unavailable', async () => {
+  server.setLetrasUnavailable(true);
+  await readSong();
+  assert.match(await (await element('#lyrics-source')).getText(), /lyrics.ovh/);
+  assert.match(await (await element('#lyrics-source')).getText(), /Origem não informada/);
+  assert.ok(await (await element('#source-retry')).isEnabled());
+  assert.ok(server.requests.some(url => url.startsWith('/v1/')));
+  await (await element('#translation-toggle')).click(); await waitFor('#retry-translation');
+  assert.equal((await elements('.translation')).length, 0);
+  server.setLetrasUnavailable(false);
+  await (await element('#reload-lyrics')).click(); await waitFor('#lyrics .original');
+  assert.match(await (await element('#lyrics-source')).getText(), /Letras.mus.br/);
+  await (await element('#translation-toggle')).click();
+  await driver.wait(async () => (await elements('.translation')).length === sampleLyrics.split('\n').filter(Boolean).length, 9000);
 });
 
 test('interface language changes persist and leave the original and favorites intact', async () => {

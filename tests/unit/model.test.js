@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanQuery, uniqueSongs, filterFavorites, lyricLines, confidentMatch, songKey, youtubeVideoUrl, videoOrigin, matchedVideo, youtubeDestination, splitUtf8, decodeEntities } from '../../src/src/model.js';
+import { cleanQuery, uniqueSongs, filterFavorites, lyricLines, confidentMatch, songKey, youtubeVideoUrl, videoOrigin, matchedVideo, youtubeDestination } from '../../src/src/model.js';
 
 test('free queries preserve titles and meaningful versions while removing video noise', () => {
   assert.equal(cleanQuery('  Remember\n the Time  '), 'Remember the Time');
@@ -54,13 +54,4 @@ test('video association requires both the chosen artist and title in the origin'
   assert.equal(matchedVideo({ ...song, artist: 'Other Voices' }, origin), null);
   assert.equal(matchedVideo({ ...song, title: 'Something Else' }, origin), null);
   assert.match(youtubeDestination({ ...song, videoUrl: 'javascript:alert(1)' }), /^https:\/\/www.youtube.com\/results\?search_query=Night%20Letters%20Window%20Songs$/);
-});
-
-test('long Unicode verses stay within the translation byte limit and retain all characters', () => {
-  const text = '夜空の星を見上げて🎵'.repeat(60);
-  const chunks = splitUtf8(text);
-  assert.ok(chunks.length > 1);
-  assert.ok(chunks.every(chunk => new TextEncoder().encode(chunk).length <= 480));
-  assert.equal(chunks.join(''), text);
-  assert.equal(decodeEntities('you &amp; me &#39; &lt;script&gt;'), "you & me ' <script>");
 });

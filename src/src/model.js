@@ -86,33 +86,6 @@ export function youtubeDestination(song) {
   return known || `https://www.youtube.com/results?search_query=${encodeURIComponent(`${song.artist} ${song.title}`)}`;
 }
 
-export function splitUtf8(text, maxBytes = 480) {
-  const encoder = new TextEncoder();
-  const chunks = [];
-  let current = '';
-  for (const char of text) {
-    if (encoder.encode(current + char).length > maxBytes && current) {
-      const boundary = current.lastIndexOf(' ');
-      if (boundary > current.length / 2) {
-        chunks.push(current.slice(0, boundary));
-        current = current.slice(boundary + 1);
-      } else { chunks.push(current); current = ''; }
-    }
-    current += char;
-  }
-  if (current) chunks.push(current);
-  return chunks;
-}
-
-export function decodeEntities(text) {
-  const entities = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', rsquo: '’', lsquo: '‘' };
-  return String(text).replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (match, code) => {
-    if (code[0] !== '#') return entities[code] ?? match;
-    const number = code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : Number(code.slice(1));
-    return number > 0 && number <= 0x10ffff ? String.fromCodePoint(number) : match;
-  });
-}
-
 export function defaultSession() {
   return {
     id: crypto.randomUUID(), view: 'search', query: '', results: [], favoritesQuery: '',

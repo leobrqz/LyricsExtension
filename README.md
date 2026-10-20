@@ -35,8 +35,8 @@
 
 - **Search as you type.** Use a song title, an artist, or a combination of both. No required format or separator.
 - **Search from any page.** Select text, right-click, and choose the lyrics search action.
-- **Read the original first.** Lyrics preserve their lines and stanzas. Optional translations appear below each original line in a softer color.
-- **See the lyrics provider.** A link below the artist credits lyrics.ovh. Its API does not disclose the original source website.
+- **Read the original first.** Lyrics preserve their lines and stanzas. Published Portuguese translations from Letras.mus.br appear below the matching original lines in a softer color.
+- **See the lyrics provider.** A link below the artist credits the exact Letras song page. API fallbacks say "via lyrics.ovh" and explain that its API does not disclose the original website. You can retry Letras directly from that label.
 - **Keep your favorites.** Save songs, search your collection, and undo accidental removals. Previously loaded favorite lyrics and translations remain available offline.
 - **Open YouTube.** Return to a matching video when the search started there, or open a search for the song.
 - **Make yourself comfortable.** A dark slate interface, smooth transitions, keyboard navigation, reduced-motion support, and English or Brazilian Portuguese labels.
@@ -59,15 +59,17 @@ This is an **unsigned development preview**. Temporary installations last until 
 
 **From the toolbar:** open the extension, type a query, and choose a song. Use the star to save it. The **Favorites** view filters your saved collection locally, without an internet request.
 
-**Translations:** choose **Show translation**. The source language is detected on your device and can be corrected manually. Translation targets are English and Portuguese. Each newly opened song starts with its original lyrics. Translations are machine-generated and may differ from an editorial translation.
+**Translations:** choose **Show translation** to load the Portuguese version published on Letras.mus.br. The extension checks the original and translated verse pairs before displaying them together. If no translation is available or the verses do not match, the original stays readable. Each newly opened song starts with its original lyrics. English and Portuguese remain available for the interface; published translations currently target Portuguese only.
 
 **YouTube:** when a context-menu search starts on an identifiable YouTube video and its title matches both the artist and song, the extension remembers that video. Otherwise, the button opens a YouTube search. Manual searches do not automatically choose a specific video.
 
 ## Content services
 
-Song discovery and original lyrics use the [public lyrics.ovh API](https://github.com/NTag/lyrics.ovh#api) directly. No account, API key, or self-hosted server is required. A song can appear in suggestions without having available lyrics. The interface distinguishes missing content from connection failures.
+Song discovery uses the [public lyrics.ovh API](https://github.com/NTag/lyrics.ovh#api). When you open a song, the extension requests its lyrics directly from [Letras.mus.br](https://www.letras.mus.br/) through your browser's connection. If a title alias points to a different version, the artist catalog is checked for an exact match. If Letras cannot supply the original, lyrics.ovh is used as a fallback. Its API does not disclose the original website, so the interface reports that source as unknown rather than guessing.
 
-Translations use [MyMemory by Translated](https://mymemory.translated.net/doc/spec.php). Its [documented anonymous allowance](https://mymemory.translated.net/doc/usagelimits.php) is **5,000 characters per day**. Requests from the same connection can share that allowance. Repeated lines are translated once per request, and saved translations are reused. If the allowance runs out or some lines cannot be translated, the original stays readable and you can retry the missing lines later.
+Translations come from the corresponding Letras `traducao.html` page and are requested only when you choose to show them. They are published content, without a machine translation service. This access is independent of the sources enabled on lyrics.ovh's server. No account, API key, or local server is required. Site coverage, page changes, or access restrictions can affect availability.
+
+Favorites saved by older versions keep their original lyrics; their cached machine translations are removed on upgrade. Choose **Reload lyrics** in the translation panel to look for a Letras version of an older saved copy or an API fallback.
 
 The extension requires no payment. External services control their availability, coverage, and limits; these can change. Search cannot guarantee a result for every song or spelling variation.
 
@@ -99,7 +101,7 @@ npm run package
 npm run test:live
 ```
 
-This optional integration check contacts the public services and consumes translation allowance. It depends on their availability and is separate from the deterministic test suite. Its output contains metadata and counts rather than song lyrics. Test fixtures use original text written for this project.
+This optional check opens real songs in Firefox and contacts lyrics.ovh and Letras.mus.br, including published translations and a song without one. It depends on those services and is separate from the deterministic test suite. Its output contains metadata and counts rather than song lyrics. The controlled test fixtures use original text written for this project.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
@@ -109,8 +111,9 @@ Lyrics Extension has no accounts, advertising, telemetry, or browsing-history co
 
 ### Data sent to services
 
-- **Search:** text you type or explicitly select for a context-menu search is sent to `api.lyrics.ovh`. Its suggestions use the Deezer catalog. Selecting a song sends its artist and title to retrieve lyrics. The rest of the page and its URL are not sent with this request.
-- **Translation:** when you request a translation, the necessary original lines and language pair are sent to `api.mymemory.translated.net`, operated by Translated. Initial language detection runs locally. The extension sends no email address or personal identifier. Service providers receive connection information such as your IP address.
+- **Search:** text you type or explicitly select for a context-menu search is sent to `api.lyrics.ovh`. Its suggestions use the Deezer catalog. The rest of the page and its URL are not sent with this request.
+- **Lyrics:** selecting a song requests a Letras page using the artist and title. If that lookup fails, the artist and title are sent to `api.lyrics.ovh` for fallback lyrics.
+- **Translation:** choosing to show a translation requests the matching Portuguese translation page directly from Letras. Original verses are checked locally against that page; they are not submitted to a translation service. Providers receive connection information such as your public IP address, including your configured VPN or proxy when applicable.
 - **YouTube:** the extension considers the source video after an explicit context-menu search. It saves the video link only when the artist and title match. Clicking the YouTube button opens that video or a search on YouTube, under YouTube's own policies.
 
 Content requests omit authentication cookies and the source-page referrer. There is no project-operated intermediary server. External providers process requests under their own terms and control their own logs.
@@ -130,7 +133,8 @@ To delete a saved song and its cached content, remove its star or delete it from
 | Context menus | Offer a lyrics search for selected text. |
 | Storage | Keep favorites, preferences, and the reading session. |
 | Active tab | Read limited source-tab context after an explicit action to recognize a YouTube video. |
-| lyrics.ovh and MyMemory access | Request lyrics, suggestions, and translations. |
+| lyrics.ovh access | Find songs and retrieve fallback original lyrics. |
+| Letras.mus.br access | Retrieve original lyrics and published Portuguese translations directly through your connection. |
 
 The extension does not monitor pages in the background, capture audio, read browsing history, or execute remote code. Search terms and selected content are declared in Firefox's data-transmission permissions.
 
@@ -138,21 +142,16 @@ For privacy questions, use the [project issues](https://github.com/leobrqz/Lyric
 
 ## Credits
 
-- [lyrics.ovh](https://github.com/NTag/lyrics.ovh) provides the public API used for song discovery and original lyrics.
-- [MyMemory by Translated](https://mymemory.translated.net/) provides machine translations.
-- [franc-min](https://github.com/wooorm/franc), [trigram-utils](https://github.com/wooorm/trigram-utils), [n-gram](https://github.com/words/n-gram), and [collapse-white-space](https://github.com/wooorm/collapse-white-space) provide local language detection and its supporting utilities. These MIT-licensed dependencies are included in the extension; their notices are preserved below.
+- [lyrics.ovh](https://github.com/NTag/lyrics.ovh) provides song discovery and fallback lyrics. The direct Letras reader is adapted from its MIT-licensed provider code, with the published-translation support developed for our contribution to that project.
+- [Letras.mus.br](https://www.letras.mus.br/) supplies original lyrics and published Portuguese translations when available. Each displayed Letras song links to its source page.
 
 <details>
-<summary>Bundled dependency copyright and license notices</summary>
+<summary>Adapted source copyright and license notice</summary>
 
 ```text
 MIT License
 
-Copyright (c) 2014 Titus Wormer <tituswormer@gmail.com>
-Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
-Copyright (c) 2008 Kent S Johnson
-Copyright (c) 2006 Jacob R Rideout <kde@jacobrideout.net>
-Copyright (c) 2004 Maciej Ceglowski
+Copyright (c) Basile Bruneau
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

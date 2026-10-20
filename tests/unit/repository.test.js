@@ -54,5 +54,20 @@ test('failed storage writes leave saved state intact and do not poison later ope
 
 test('unsupported preferences cannot create invalid locale or translation settings', async () => {
   const { areas } = memoryStorage(); const repo = new Repository(areas, 'pt-BR'); await repo.init();
-  assert.deepEqual(await repo.updatePreferences({ locale: 'invalid', translationTarget: 'javascript:' }), { locale: 'pt-BR', translationTarget: 'pt' });
+  assert.deepEqual(await repo.updatePreferences({ locale: 'invalid', translationTarget: 'javascript:' }), { locale: 'pt-BR' });
+});
+
+test('upgrading removes old machine translations while preserving favorite lyrics', async () => {
+  const { areas, data } = memoryStorage();
+  const reader = { song, lyrics: 'Saved original', translations: { 'en|pt': { lines: ['Automatic text'], complete: true } }, translationVisible: true, source: 'en', target: 'pt' };
+  data.local.favorites = [{ song, reader }];
+  data.local.preferences = { locale: 'en', translationTarget: 'en' };
+  data.session.currentSession = { id: 'previous-session', reader };
+  const repo = new Repository(areas, 'pt-BR'); await repo.init();
+  assert.equal(repo.favorites[0].reader.lyrics, 'Saved original');
+  assert.equal(repo.favorites[0].reader.translation, null);
+  assert.equal(repo.favorites[0].reader.translationVisible, false);
+  assert.equal(data.local.favorites[0].reader.translations, undefined);
+  assert.equal(data.session.currentSession.reader.translations, undefined);
+  assert.deepEqual(repo.preferences, { locale: 'en' });
 });

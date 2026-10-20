@@ -50,11 +50,11 @@ function Assert-ReleaseArtifacts([string]$Directory, [hashtable]$Product) {
         if ($manifest.version -ne $Product.Version -or $manifest.browser_specific_settings.gecko.id -ne $Product.Id) {
             throw 'The packaged manifest does not match the product version and extension ID.'
         }
-        $expectedHosts = @('https://api.lyrics.ovh/*', 'https://api.mymemory.translated.net/*')
+        $expectedHosts = @('https://api.lyrics.ovh/*', 'https://www.letras.mus.br/*', 'https://letras.mus.br/*')
         if (Compare-Object $expectedHosts @($manifest.host_permissions)) { throw 'Unexpected production host permissions.' }
         if ($manifestText -match 'localhost|127\.0\.0\.1') { throw 'Test endpoints must not be distributed.' }
         $readme = Read-ReleaseZipText $archive 'README.md'
-        if (-not $readme.Contains('## Privacy') -or -not $readme.Contains('Copyright (c) 2014 Titus Wormer') -or
+        if (-not $readme.Contains('## Privacy') -or -not $readme.Contains('Copyright (c) Basile Bruneau') -or
             -not $readme.Contains('The above copyright notice and this permission notice shall be included')) {
             throw 'The package must preserve privacy information and dependency notices.'
         }

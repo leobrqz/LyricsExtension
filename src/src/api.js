@@ -2,7 +2,6 @@ import { cleanQuery, uniqueSongs, normalizeLyrics } from './model.js';
 
 // Replaced at build time; all production traffic goes to the approved public services.
 export const LYRICS_API = typeof __LYRICS_API__ === 'undefined' ? 'https://api.lyrics.ovh' : __LYRICS_API__;
-export const TRANSLATION_API = typeof __TRANSLATION_API__ === 'undefined' ? 'https://api.mymemory.translated.net' : __TRANSLATION_API__;
 
 export class ServiceError extends Error {
   constructor(code, cause) { super(code, { cause }); this.name = 'ServiceError'; this.code = code; }

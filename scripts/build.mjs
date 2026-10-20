@@ -5,14 +5,14 @@ import { fileURLToPath } from 'node:url';
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-export async function buildExtension({ outdir = path.join(projectRoot, 'dist'), apiBase, translationBase } = {}) {
+export async function buildExtension({ outdir = path.join(projectRoot, 'dist'), apiBase, letrasBase } = {}) {
   outdir = path.resolve(outdir);
   if (!outdir.startsWith(projectRoot + path.sep)) throw new Error('Build output must stay inside the project.');
   await mkdir(outdir, { recursive: true });
   const source = path.join(projectRoot, 'src');
   const defines = {};
   if (apiBase) defines.__LYRICS_API__ = JSON.stringify(apiBase);
-  if (translationBase) defines.__TRANSLATION_API__ = JSON.stringify(translationBase);
+  if (letrasBase) defines.__LETRAS_BASE__ = JSON.stringify(letrasBase);
   await build({
     entryPoints: { app: path.join(source, 'src/app.js'), background: path.join(source, 'src/background.js') },
     outdir, bundle: true, format: 'iife', target: 'firefox140', platform: 'browser',
@@ -22,8 +22,8 @@ export async function buildExtension({ outdir = path.join(projectRoot, 'dist'), 
     await cp(path.join(source, asset), path.join(outdir, asset), { recursive: true });
   }
   const manifest = JSON.parse(await readFile(path.join(source, 'manifest.json'), 'utf8'));
-  if (apiBase || translationBase) {
-    const origins = [...new Set([apiBase, translationBase].filter(Boolean).map(value => new URL(value).origin))];
+  if (apiBase || letrasBase) {
+    const origins = [...new Set([apiBase, letrasBase].filter(Boolean).map(value => new URL(value).origin))];
     manifest.host_permissions.push(...origins.map(origin => `${origin}/*`));
     manifest.content_security_policy.extension_pages = manifest.content_security_policy.extension_pages.replace('connect-src ', `connect-src ${origins.join(' ')} `);
   }
