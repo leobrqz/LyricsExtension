@@ -36,10 +36,11 @@
 - **Search as you type.** Use a song title, an artist, or a combination of both. No required format or separator.
 - **Search from any page.** Select text, right-click, and choose the lyrics search action.
 - **Read the original first.** Lyrics preserve their lines and stanzas. Published Portuguese translations from Letras.mus.br appear below the matching original lines in a softer color.
-- **See the lyrics provider.** A link below the artist credits the exact Letras song page. API fallbacks say "via lyrics.ovh" and explain that its API does not disclose the original website. You can retry Letras directly from that label.
+- **See the lyrics provider.** A link beside the artist credits the exact Letras song page. API fallbacks say "via lyrics.ovh" and explain that its API does not disclose the original website. You can retry Letras directly from that label.
 - **Keep your favorites.** Save songs, search your collection, and undo accidental removals. Previously loaded favorite lyrics and translations remain available offline.
+- **Revisit recent songs.** The Recent tab keeps your last 50 opened songs locally, newest first, with a button to clear the list.
 - **Open YouTube.** Return to a matching video when the search started there, or open a search for the song.
-- **Make yourself comfortable.** A dark slate interface, smooth transitions, keyboard navigation, reduced-motion support, and English or Brazilian Portuguese labels.
+- **Read with less clutter.** A charcoal interface with top navigation tabs, underlined search fields, line-by-line translations, keyboard navigation, reduced-motion support, and English or Brazilian Portuguese labels.
 - **Pick up where you left off.** The current view, query, and reading position survive closing the popup during the same Firefox session.
 
 ## Installation
@@ -57,9 +58,11 @@ This is an **unsigned development preview**. Temporary installations last until 
 
 **From a page:** select text related to a song and use the context menu. A title alone is enough to start a search; artist names and separators are optional. Choose a result when several songs match.
 
-**From the toolbar:** open the extension, type a query, and choose a song. Use the star to save it. The **Favorites** view filters your saved collection locally, without an internet request.
+**From the toolbar:** open the extension, type a query, and choose a song. Use **Save** to keep it in your favorites. The **Favorites** view filters your saved collection locally, without an internet request. When the search field is empty, recently opened songs appear for quick access.
 
-**Translations:** choose **Show translation** to load the Portuguese version published on Letras.mus.br. The extension checks the original and translated verse pairs before displaying them together. If no translation is available or the verses do not match, the original stays readable. Each newly opened song starts with its original lyrics. English and Portuguese remain available for the interface; published translations currently target Portuguese only.
+**Recent songs:** open **Recent** to revisit songs whose lyrics you opened. Opening a song again moves it to the top without adding a duplicate. The list survives restarting Firefox and can be cleared with **Clear recent songs**. Searches and unsuccessful lyrics lookups are not added.
+
+**Translations:** turn on **Translation** beside the song actions to load the Portuguese version published on Letras.mus.br. The extension checks the original and translated verse pairs before displaying them together. If no translation is available or the verses do not match, the original stays readable. Each newly opened song starts with its original lyrics. English and Portuguese remain available for the interface; published translations currently target Portuguese only.
 
 **YouTube:** when a context-menu search starts on an identifiable YouTube video and its title matches both the artist and song, the extension remembers that video. Otherwise, the button opens a YouTube search. Manual searches do not automatically choose a specific video.
 
@@ -122,9 +125,13 @@ Content requests omit authentication cookies and the source-page referrer. There
 
 Favorites, language preferences, and previously loaded lyrics and translations for favorite songs are stored locally in the current Firefox profile. They are not synced or shared across devices.
 
+The last 50 successfully opened songs are also stored locally, with their song metadata and opening time. Recent does not save additional copies of lyrics or translations; offline copies are kept only for favorites. Clear this list from the **Recent** tab.
+
+Removing a favorite deletes its saved lyrics and translations; its entry in Recent is cleared separately.
+
 The current view, query, favorites filter, reading position, and open content use session storage and are discarded when Firefox restarts. The extension does not keep a permanent search history.
 
-To delete a saved song and its cached content, remove its star or delete it from **Favorites**. You can undo the removal while the notification is visible. An already open copy may remain in the current session until Firefox restarts. Uninstalling the extension removes its installation data in normal browser use. Temporary development installations can preserve storage across reloads or reinstalls for testing.
+To delete a saved song and its cached content, toggle **Saved** off in its reader or remove it from **Favorites**. You can undo the removal while the notification is visible. An already open copy may remain in the current session until Firefox restarts. Uninstalling the extension removes its installation data in normal browser use. Temporary development installations can preserve storage across reloads or reinstalls for testing.
 
 ### Permissions
 

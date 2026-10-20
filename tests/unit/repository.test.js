@@ -71,3 +71,30 @@ test('upgrading removes old machine translations while preserving favorite lyric
   assert.equal(data.session.currentSession.reader.translations, undefined);
   assert.deepEqual(repo.preferences, { locale: 'en' });
 });
+
+test('recent songs keep opening order, deduplicate rereads, and survive restarting', async () => {
+  const { areas, data } = memoryStorage();
+  const repo = new Repository(areas, 'pt-BR'); await repo.init();
+  const other = { ...song, title: 'Other Song' };
+  await repo.addRecent(song);
+  await repo.addRecent(other);
+  await repo.addRecent({ ...song, title: 'WINDOW SONGS' });
+  assert.deepEqual(repo.recents.map(item => item.song.title), ['WINDOW SONGS', 'Other Song']);
+  assert.ok(Number.isFinite(repo.recents[0].openedAt));
+  data.session = {};
+  const reopened = new Repository(areas, 'pt-BR'); await reopened.init();
+  assert.deepEqual(reopened.snapshot().recents, repo.recents);
+});
+
+test('recent songs have a storage limit and can be cleared without changing favorites', async () => {
+  const { areas, data } = memoryStorage();
+  const repo = new Repository(areas, 'en'); await repo.init();
+  await repo.setFavorite(song, null, true);
+  await Promise.all(Array.from({ length: 55 }, (_, index) => repo.addRecent({ ...song, title: `Song ${index}` })));
+  assert.equal(repo.recents.length, 50);
+  assert.equal(repo.recents[0].song.title, 'Song 54');
+  assert.equal(repo.recents.at(-1).song.title, 'Song 5');
+  await repo.clearRecents();
+  assert.deepEqual(data.local.recents, []);
+  assert.equal(repo.favorites.length, 1);
+});

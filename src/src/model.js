@@ -89,6 +89,6 @@ export function youtubeDestination(song) {
 export function defaultSession() {
   return {
     id: crypto.randomUUID(), view: 'search', query: '', results: [], favoritesQuery: '',
-    reader: null, origin: null, autoOpen: false, searchScroll: 0, favoritesScroll: 0, readerScroll: 0,
+    reader: null, origin: null, autoOpen: false, searchScroll: 0, favoritesScroll: 0, recentsScroll: 0, readerScroll: 0,
   };
 }

@@ -54,6 +54,8 @@ browser.runtime.onMessage.addListener((message, sender) => {
       }
       case 'FAVORITE': return repository.setFavorite(message.song, message.reader, message.enabled, message.savedAt);
       case 'CACHE_FAVORITE': await repository.updateFavoriteReader(message.reader); return true;
+      case 'RECENT': return repository.addRecent(message.song);
+      case 'CLEAR_RECENTS': return repository.clearRecents();
       default: return undefined;
     }
   })();

@@ -36,6 +36,7 @@ beforeEach(async () => {
   await openExtension(driver);
   const snapshot = await message('BOOT');
   for (const favorite of snapshot.favorites) await message('FAVORITE', { song: favorite.song, enabled: false });
+  await message('CLEAR_RECENTS');
   await message('PREFERENCES', { value: { locale: 'pt-BR' } });
   await (await element('#nav-favorites')).click();
   await driver.executeScript('const input=document.getElementById("search-input");input.value="";input.dispatchEvent(new Event("input",{bubbles:true}));');
@@ -115,7 +116,7 @@ test('empty search, failed service, and missing lyrics have distinct recoverable
   assert.ok((await element('.empty button')).isEnabled());
   await search('missing'); await waitFor('.song-open');
   await (await element('.song-open')).click(); await waitFor('#retry-lyrics');
-  assert.match(await (await element('.empty h2')).getText(), /letra/);
+  assert.match(await (await element('.empty h2')).getText(), /letra/i);
   await (await element('#reader-back')).click();
   assert.equal(await (await element('#search-input')).getAttribute('value'), 'missing');
 });
@@ -124,9 +125,12 @@ test('lyrics and cached translations remain readable from favorites without the 
   await readSong();
   await (await element('#favorite-toggle')).click();
   await driver.wait(async () => (await message('BOOT')).favorites.length === 1, 5000);
-  await (await element('#translation-toggle')).click();
+  assert.equal(await (await element('#translation-toggle')).getAttribute('role'), 'switch');
+  assert.equal(await (await element('#translation-toggle')).getAttribute('aria-checked'), 'false');
+  await (await element('#translation-toggle')).sendKeys(Key.SPACE);
   const nonemptyLines = sampleLyrics.split('\n').filter(Boolean).length;
   await driver.wait(async () => (await elements('.translation')).length === nonemptyLines, 9000);
+  assert.equal(await (await element('#translation-toggle')).getAttribute('aria-checked'), 'true');
   await driver.wait(async () => (await message('BOOT')).favorites[0].reader.translation?.provider === 'letras', 5000);
   const first = await element('[data-line-index="0"]');
   assert.equal(await first.findElement(By.css('.original')).getText(), 'The rain is singing at my window');
@@ -162,6 +166,34 @@ test('favorite removal is reversible and favorites filtering never searches the 
   await driver.wait(async () => (await elements('.song-open')).length === 0, 5000);
   await (await element('#toast button')).click();
   await waitFor('.song-open');
+  assert.equal((await message('BOOT')).favorites.length, 1);
+});
+
+test('recent songs open from the top tabs, keep rereads first, and can be cleared', async () => {
+  await (await element('#nav-recents')).click();
+  assert.match(await (await element('.empty h2')).getText(), /Nenhuma música recente/);
+  const navFits = await driver.executeScript('const bar=document.querySelector(".top-nav").getBoundingClientRect();return bar.bottom<=document.getElementById("content").getBoundingClientRect().top&&[...document.querySelectorAll(".nav-button")].every(b=>{const r=b.getBoundingClientRect();return r.left>=bar.left&&r.right<=bar.right;});');
+  assert.equal(navFits, true);
+  await (await element('#nav-search')).click();
+  await readSong();
+  await (await element('#favorite-toggle')).click();
+  await driver.wait(async () => (await message('BOOT')).favorites.length === 1, 5000);
+  await (await element('#reader-back')).click();
+  await (await elements('.song-open'))[1].click(); await waitFor('#lyrics .original');
+  const requests = server.requests.length;
+  await (await element('#nav-recents')).click();
+  assert.equal((await elements('.song-open')).length, 2);
+  assert.equal(await (await element('.song-artist')).getText(), 'Other Voices');
+  assert.equal(server.requests.length, requests, 'the recent list is local');
+  await (await elements('.song-open'))[1].click(); await waitFor('#lyrics .original');
+  assert.equal(await (await element('#nav-recents')).getAttribute('aria-current'), 'page');
+  await (await element('#reader-back')).click();
+  assert.equal((await elements('.song-open')).length, 2);
+  assert.equal(await (await element('.song-artist')).getText(), 'Night Letters');
+  await writeFile('artifacts/recents.png', await driver.takeScreenshot(), 'base64');
+  await (await element('#clear-recents')).click();
+  await driver.wait(async () => (await elements('.song-open')).length === 0, 5000);
+  assert.deepEqual((await message('BOOT')).recents, []);
   assert.equal((await message('BOOT')).favorites.length, 1);
 });
 
@@ -222,14 +254,15 @@ test('untrusted catalog text is displayed as text rather than executable markup'
 
 test('reopening the extension retains the current reader and its scroll position', async () => {
   await readSong();
-  await driver.executeScript('document.getElementById("content").scrollTop=220;');
-  await driver.wait(async () => (await message('BOOT')).session.readerScroll >= 200, 5000);
+  const position = await driver.executeScript('const content=document.getElementById("content");content.scrollTop=220;return content.scrollTop;');
+  assert.ok(position > 0);
+  await driver.wait(async () => Math.abs((await message('BOOT')).session.readerScroll - position) < 2, 5000);
   await openExtension(driver); await waitFor('#lyrics .original');
-  assert.ok(await driver.executeScript('return document.getElementById("content").scrollTop;') >= 200);
+  assert.ok(Math.abs(await driver.executeScript('return document.getElementById("content").scrollTop;') - position) < 2);
 });
 
 test('keyboard navigation has visible focus and reduced-motion preference disables animations', async () => {
-  await (await element('#search-input')).sendKeys(Key.TAB);
+  await (await element('#search-input')).sendKeys(Key.chord(Key.SHIFT, Key.TAB));
   assert.equal(await driver.executeScript('return document.activeElement.tagName;'), 'BUTTON');
   const missingNames = await driver.executeScript('return [...document.querySelectorAll("button")].filter(b=>!b.textContent.trim()&&!b.getAttribute("aria-label")).length;');
   assert.equal(missingNames, 0);
@@ -254,12 +287,14 @@ test('real Firefox selection menu starts a search and retains a matching YouTube
   assert.match(menuLabel, /Window Songs/);
   await driver.setContext(firefox.Context.CONTENT);
   await openExtension(driver); await waitFor('#lyrics .original');
-  assert.equal(await (await element('#youtube-button')).getText(), 'Abrir no YouTube');
+  assert.equal(await (await element('#youtube-button')).getText(), 'YouTube');
+  assert.equal(await (await element('#youtube-button')).getAttribute('aria-label'), 'Abrir no YouTube');
   assert.equal((await message('BOOT')).session.reader.song.videoUrl, 'https://www.youtube.com/watch?v=AbCdEfGhI12');
   await (await element('#reader-back')).click();
   await search('Window'); await waitFor('.song-open');
   await (await elements('.song-open'))[1].click(); await waitFor('#lyrics .original');
-  assert.equal(await (await element('#youtube-button')).getText(), 'Buscar no YouTube');
+  assert.equal(await (await element('#youtube-button')).getText(), 'YouTube');
+  assert.equal(await (await element('#youtube-button')).getAttribute('aria-label'), 'Buscar no YouTube');
 });
 
 test('the Firefox toolbar button opens the actual extension popup at a usable size', async () => {
@@ -284,13 +319,16 @@ test('the Firefox toolbar button opens the actual extension popup at a usable si
   await driver.manage().window().setRect({ width: 460, height: 770 });
 });
 
-test('favorites persist after an actual Firefox shutdown and restart', async () => {
+test('favorites and recent songs persist after an actual Firefox shutdown and restart', async () => {
   await readSong(); await (await element('#favorite-toggle')).click();
   await driver.wait(async () => (await message('BOOT')).favorites.length === 1, 5000);
   await driver.quit(); driver = null;
   driver = await startFirefox(output, { profile });
   const snapshot = await message('BOOT');
   assert.equal(snapshot.favorites.length, 1);
+  assert.equal(snapshot.recents.length, 1);
   assert.equal(snapshot.session.query, '', 'session-only context is cleared on a browser restart');
+  await (await element('#nav-recents')).click();
+  assert.equal((await elements('.song-open')).length, 1);
   await (await element('#nav-favorites')).click(); await (await element('.song-open')).click(); await waitFor('#lyrics .original');
 });

@@ -1,6 +1,6 @@
 {
   "name": "lyrics-extension",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "Find, read, translate and save song lyrics in Firefox.",
   "type": "module",

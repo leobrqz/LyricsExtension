@@ -18,18 +18,22 @@ export class Repository {
     this.storage = storage;
     this.preferences = initialPreferences(language);
     this.favorites = [];
+    this.recents = [];
     this.session = defaultSession();
     this.queue = Promise.resolve();
   }
 
   async init() {
     const [local, temporary] = await Promise.all([
-      this.storage.local.get(['preferences', 'favorites']), this.storage.session.get('currentSession'),
+      this.storage.local.get(['preferences', 'favorites', 'recents']), this.storage.session.get('currentSession'),
     ]);
     if (local.preferences) this.preferences = this.validPreferences(local.preferences);
     if (Array.isArray(local.favorites)) {
       this.favorites = local.favorites.filter(item => typeof item?.song?.title === 'string' && typeof item?.song?.artist === 'string')
         .map(item => ({ ...item, reader: restoreReader(item.reader) }));
+    }
+    if (Array.isArray(local.recents)) {
+      this.recents = local.recents.filter(item => typeof item?.song?.title === 'string' && typeof item?.song?.artist === 'string').slice(0, 50);
     }
     if (temporary.currentSession?.id) this.session = { ...this.session, ...temporary.currentSession, reader: restoreReader(temporary.currentSession.reader) };
     const migrated = {};
@@ -46,7 +50,7 @@ export class Repository {
     };
   }
 
-  snapshot() { return { preferences: this.preferences, favorites: this.favorites, session: this.session }; }
+  snapshot() { return { preferences: this.preferences, favorites: this.favorites, recents: this.recents, session: this.session }; }
 
   write(operation) {
     const next = this.queue.then(operation, operation);
@@ -103,6 +107,25 @@ export class Repository {
       const favorites = this.favorites.map(item => item.song.key === reader.song.key ? { ...item, reader } : item);
       await this.storage.local.set({ favorites });
       this.favorites = favorites;
+    });
+  }
+
+  addRecent(song) {
+    return this.write(async () => {
+      const key = songKey(song);
+      const recent = { song: { ...song, key }, openedAt: Date.now() };
+      const recents = [recent, ...this.recents.filter(item => item.song.key !== key)].slice(0, 50);
+      await this.storage.local.set({ recents });
+      this.recents = recents;
+      return recents;
+    });
+  }
+
+  clearRecents() {
+    return this.write(async () => {
+      await this.storage.local.set({ recents: [] });
+      this.recents = [];
+      return this.recents;
     });
   }
 }

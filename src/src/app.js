@@ -93,15 +93,16 @@ function render({ focus = false, scroll } = {}) {
   document.documentElement.lang = state.preferences.locale;
   root.setAttribute('aria-busy', 'false');
   const header = el('header', { className: 'topbar' },
-    el('button', { className: 'brand', type: 'button', 'aria-label': `Lyrics · ${text('search')}`, onClick: () => navigate('search') }, icon('wave'), 'lyrics'),
+    el('button', { className: 'brand', type: 'button', 'aria-label': `Lyrics · ${text('search')}`, onClick: () => navigate('search') }, 'lyrics'),
     button(text('settings'), () => navigate('settings'), { name: 'settings', className: `icon-button ${state.session.view === 'settings' ? 'active' : ''}`, id: 'settings-button' }));
   const content = el('main', { id: 'content', tabindex: '-1', 'aria-label': text(state.session.view === 'reader' ? 'lyricsLabel' : state.session.view), onScroll: () => { captureScroll(); scheduleSave(); } });
-  content.append(state.session.view === 'reader' ? renderReader() : state.session.view === 'favorites' ? renderFavorites() : state.session.view === 'settings' ? renderSettings() : renderSearch());
+  content.append(state.session.view === 'reader' ? renderReader() : state.session.view === 'favorites' ? renderFavorites() : state.session.view === 'recents' ? renderRecents() : state.session.view === 'settings' ? renderSettings() : renderSearch());
   if (lastView === state.session.view) content.firstElementChild.style.animation = 'none';
-  const activeNav = state.session.view === 'reader' ? state.session.reader?.from : state.session.view;
-  const nav = el('nav', { className: 'bottom-nav', 'aria-label': 'Lyrics' },
-    navButton('search', 'search', activeNav), navButton('favorites', 'star', activeNav));
-  root.replaceChildren(header, content, nav, toastElement);
+  const libraryView = state.session.view === 'settings' ? settingsFrom : state.session.view;
+  const activeNav = libraryView === 'reader' ? state.session.reader?.from || 'search' : libraryView;
+  const nav = el('nav', { className: 'top-nav', 'aria-label': 'Lyrics' },
+    navButton('search', activeNav), navButton('favorites', activeNav), navButton('recents', activeNav));
+  root.replaceChildren(header, nav, content, toastElement);
   const desiredScroll = scroll ?? (lastView === state.session.view ? previousScroll : state.session[`${state.session.view}Scroll`] || 0);
   content.scrollTop = desiredScroll;
   if (scroll === undefined) restoreAnchor(anchor);
@@ -113,10 +114,9 @@ function render({ focus = false, scroll } = {}) {
   } else if (focus) document.querySelector('input')?.focus({ preventScroll: true });
 }
 
-function navButton(view, name, active) {
-  const node = button(text(view), () => navigate(view), { name, className: `nav-button ${active === view ? 'selected' : ''}`, id: `nav-${view}` });
+function navButton(view, active) {
+  const node = button(text(view), () => navigate(view), { className: `nav-button ${active === view ? 'selected' : ''}`, id: `nav-${view}` });
   if (active === view) node.setAttribute('aria-current', 'page');
-  if (view === 'favorites' && state.favorites.length) node.append(el('span', { className: 'badge', 'aria-hidden': 'true' }, state.favorites.length));
   return node;
 }
 
@@ -132,7 +132,7 @@ function navigate(view) {
   if (view === 'reader' && state.session.reader?.translationVisible) startTranslation();
 }
 
-function searchField(value, label, placeholder, handler) {
+function searchField(value, label, placeholder, handler, { showIcon = true } = {}) {
   let composing = false;
   const input = el('input', { id: 'search-input', type: 'text', value, placeholder, 'aria-label': label,
     autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false',
@@ -140,16 +140,17 @@ function searchField(value, label, placeholder, handler) {
     onCompositionEnd: event => { composing = false; handler(event.target.value); },
     onInput: event => { if (!composing && !event.isComposing) handler(event.target.value); } });
   const clear = value ? button(text('clear'), () => { handler(''); document.getElementById('search-input')?.focus(); }, { name: 'close', className: 'icon-button', id: 'clear-search' }) : el('span', { className: 'clear-placeholder' });
-  return el('div', { className: 'search-box' }, icon('search'), input, clear);
+  return el('div', { className: 'search-box' }, showIcon && icon('search'), input, clear);
 }
 
-function intro(title, description) {
-  return el('div', { className: 'intro' }, el('h1', {}, title), el('p', {}, description));
+function collectionHeading(title, count) {
+  return el('div', { className: 'collection-heading' }, el('h1', {}, title),
+    count !== undefined && el('span', { className: 'count' }, text(count === 1 ? 'songCountOne' : 'songCount', { count })));
 }
 
-function empty(title, description, name = 'wave', action) {
+function empty(title, description, action) {
   return el('section', { className: 'empty', role: 'status' },
-    el('div', { className: 'empty-symbol' }, icon(name)), el('h2', {}, title), el('p', {}, description), action);
+    el('h2', {}, title), el('p', {}, description), action);
 }
 
 function loading(label, skeleton = false) {
@@ -159,19 +160,18 @@ function loading(label, skeleton = false) {
 
 function renderSearch() {
   const query = state.session.query;
-  const view = el('section', { className: `view ${!query.trim() ? 'search-idle' : ''}` },
-    intro(text('welcome'), text('welcomeText')),
+  const view = el('section', { className: `view search-view ${!query.trim() ? 'search-idle' : ''}` },
     searchField(query, text('searchLabel'), text('searchPlaceholder'), onSearchInput));
   if (!query.trim()) {
-    view.append(empty(text('ready'), text('keyboardHint')));
+    if (state.recents.length) view.append(listHeading(text('recents'), state.recents.length), songList(state.recents.map(item => item.song)));
   } else if (searchStatus === 'loading') {
     view.append(loading(text(slowSearch ? 'slow' : 'searching'), true));
   } else if (searchStatus === 'error') {
-    view.append(empty(text('searchError'), text(searchError === 'timeout' ? 'timeout' : 'unavailable'), 'alert', button(text('retry'), runSearch, { name: 'refresh' })));
+    view.append(empty(text('searchError'), text(searchError === 'timeout' ? 'timeout' : 'unavailable'), button(text('retry'), runSearch, { name: 'refresh' })));
   } else if (state.session.results.length) {
     view.append(listHeading(text('results'), state.session.results.length), songList(state.session.results));
   } else if (searchStatus === 'ready') {
-    view.append(empty(text('noResults'), text('noResultsText'), 'search'));
+    view.append(empty(text('noResults'), text('noResultsText')));
   }
   return view;
 }
@@ -221,34 +221,54 @@ async function runSearch() {
 }
 
 function listHeading(label, count) {
-  return el('div', { className: 'list-heading', role: 'status' }, el('h2', { className: 'eyebrow' }, label), el('span', { className: 'count' }, count));
+  return el('div', { className: 'list-heading', role: 'status' }, el('h2', { className: 'list-label' }, label), el('span', { className: 'count' }, count));
 }
 
-function songList(songs, favorites = false) {
+function songList(songs, from = 'search') {
+  const favorites = from === 'favorites';
   return el('div', { className: 'song-list' }, songs.map(song => {
-    const duration = song.duration ? `${Math.floor(song.duration / 60)}:${String(song.duration % 60).padStart(2, '0')}` : '';
-    const row = el('article', { className: 'song-row' }, el('button', { type: 'button', className: 'song-open', 'data-song-key': song.key, onClick: () => openSong(song, favorites ? 'favorites' : 'search') },
-      el('span', { className: 'song-symbol' }, icon('note')),
+    const row = el('article', { className: 'song-row' }, el('button', { type: 'button', className: 'song-open', 'data-song-key': song.key, onClick: () => openSong(song, from) },
       el('span', { className: 'song-info' }, el('span', { className: 'song-title' }, song.title), el('span', { className: 'song-artist' }, song.artist)),
-      duration && el('span', { className: 'song-duration' }, duration), !favorites && icon('arrow')));
-    if (favorites) row.append(button(`${text('removeFavorite')} · ${song.title}`, () => changeFavorite(song, null, false), { name: 'star', className: 'icon-button active', pressed: true }));
+      icon('chevron')));
+    if (favorites) row.append(button(`${text('removeFavorite')} · ${song.title}`, () => changeFavorite(song, null, false), { name: 'close', className: 'icon-button remove-favorite' }));
     return row;
   }));
 }
 
 function renderFavorites() {
   const filtered = filterFavorites(state.favorites, state.session.favoritesQuery);
-  const view = el('section', { className: 'view' }, intro(text('favoriteTitle'), text('favoriteSubtitle')),
+  const view = el('section', { className: 'view favorites-view' }, collectionHeading(text('favorites'), state.favorites.length),
     searchField(state.session.favoritesQuery, text('favoritesPlaceholder'), text('favoritesPlaceholder'), value => {
       state.session.favoritesQuery = value; state.session.favoritesScroll = 0; scheduleSave(); render({ scroll: 0 });
-    }));
-  if (!state.favorites.length) view.append(empty(text('emptyFavorites'), text('emptyFavoritesText'), 'star'));
-  else if (!filtered.length) view.append(empty(text('emptyFilter'), text('emptyFilterText'), 'search', button(text('searchAll'), () => {
+    }, { showIcon: false }));
+  if (!state.favorites.length) view.append(empty(text('emptyFavorites'), text('emptyFavoritesText')));
+  else if (!filtered.length) view.append(empty(text('emptyFilter'), text('emptyFilterText'), button(text('searchAll'), () => {
     const query = state.session.favoritesQuery;
     navigate('search'); onSearchInput(query);
   }, { name: 'search' })));
-  else view.append(listHeading(text('favorites'), filtered.length), songList(filtered.map(item => item.song), true));
+  else view.append(songList(filtered.map(item => item.song), 'favorites'));
   return view;
+}
+
+function renderRecents() {
+  const view = el('section', { className: 'view recents-view' }, collectionHeading(text('recents'), state.recents.length));
+  if (!state.recents.length) view.append(empty(text('emptyRecents'), text('emptyRecentsText')));
+  else {
+    view.append(el('div', { className: 'collection-actions' }, button(text('clearRecents'), async () => {
+      try {
+        state.recents = await rpc('CLEAR_RECENTS');
+        state.session.recentsScroll = 0;
+        scheduleSave(); render({ scroll: 0 });
+      } catch { toast('storageError'); }
+    }, { className: 'text-button', id: 'clear-recents' })),
+    songList(state.recents.map(item => item.song), 'recents'));
+  }
+  return view;
+}
+
+async function rememberSong(song) {
+  try { state.recents = await rpc('RECENT', { song }); }
+  catch { toast('storageError'); }
 }
 
 async function openSong(song, from, { refresh = false } = {}) {
@@ -262,7 +282,7 @@ async function openSong(song, from, { refresh = false } = {}) {
   state.session.view = 'reader'; state.session.readerScroll = 0;
   render({ scroll: 0 });
   scheduleSave();
-  if (reader.lyrics) { reader.status = 'ready'; return; }
+  if (reader.lyrics) { reader.status = 'ready'; await rememberSong(reader.song); render(); return; }
   const controller = new AbortController(); lyricsController = controller;
   try {
     const result = await getSongLyrics(song, { signal: controller.signal });
@@ -270,6 +290,8 @@ async function openSong(song, from, { refresh = false } = {}) {
     reader.lyrics = result.lyrics; reader.provider = result.provider; reader.status = 'ready';
     await saveSession();
     await cacheFavorite(reader);
+    if (controller.signal.aborted || state.session.reader !== reader) return;
+    await rememberSong(reader.song);
     render();
   } catch (error) {
     if (error.name === 'AbortError' || controller.signal.aborted) return;
@@ -282,47 +304,58 @@ function renderReader() {
   const reader = state.session.reader;
   if (!reader) { state.session.view = 'search'; return renderSearch(); }
   const song = reader.song;
-  const heading = el('div', { className: 'reader-heading' }, el('p', { className: 'eyebrow' }, text('lyricsLabel')),
-    el('h1', { id: 'song-title' }, song.title), el('p', { className: 'reader-artist' }, song.artist));
+  const metadata = el('div', { className: 'reader-meta' }, el('p', { className: 'reader-artist' }, song.artist));
+  const heading = el('div', { className: 'reader-heading' }, el('h1', { id: 'song-title' }, song.title), metadata);
   if (reader.status === 'ready' && reader.lyrics) {
     const fromLetras = reader.provider?.name === 'letras';
-    const source = el('div', { className: 'reader-source', id: 'lyrics-source' }, text(fromLetras ? 'lyricSource' : 'lyricVia'), ' ',
+    const source = el('div', { className: `reader-source ${fromLetras ? '' : 'api-source'}`, id: 'lyrics-source', 'aria-label': text(fromLetras ? 'lyricSource' : 'lyricVia') },
+      !fromLetras && `${text('lyricVia')} `,
       externalLink(fromLetras ? 'Letras.mus.br' : 'lyrics.ovh', reader.provider?.url || 'https://lyrics.ovh/', 'source-link'));
     if (!fromLetras) source.append(el('span', { className: 'source-detail' }, text('sourceUnknown')),
       button(text('tryLetras'), () => openSong(song, reader.from, { refresh: true }), { name: 'refresh', className: 'source-retry', id: 'source-retry' }));
-    heading.append(source);
+    metadata.append(source);
   }
-  const view = el('section', { className: 'view reader' },
-    button(text('back'), () => navigate(reader.from || 'search'), { name: 'back', className: 'back-button', id: 'reader-back' }),
-    heading);
-  view.append(el('div', { className: 'reader-actions' },
-    button(isFavorite(song) ? text('removeFavorite') : text('addFavorite'), () => changeFavorite(song, reader, !isFavorite(song)), { name: 'star', className: `icon-button favorite-button ${isFavorite(song) ? 'active' : ''}`, pressed: isFavorite(song), id: 'favorite-toggle' }),
-    button(text(reader.translationVisible ? 'hideTranslation' : 'showTranslation'), toggleTranslation, { name: 'translate', className: `button ${reader.translationVisible ? 'active' : ''}`, pressed: reader.translationVisible, disabled: !reader.lyrics, id: 'translation-toggle' }),
-    button(text(youtubeVideoUrl(song.videoUrl) ? 'youtubeOpen' : 'youtubeSearch'), async () => {
+  const saved = isFavorite(song);
+  const favoriteLabel = text(saved ? 'removeFavorite' : 'addFavorite');
+  const youtubeLabel = text(youtubeVideoUrl(song.videoUrl) ? 'youtubeOpen' : 'youtubeSearch');
+  const actions = el('div', { className: 'reader-actions' },
+    el('button', { type: 'button', className: 'action-button', id: 'favorite-toggle', title: favoriteLabel, 'aria-label': favoriteLabel,
+      'aria-pressed': String(saved), onClick: () => changeFavorite(song, reader, !isFavorite(song)) }, icon('heart', saved), text(saved ? 'favoriteSaved' : 'saveFavorite')),
+    el('span', { className: 'action-divider', 'aria-hidden': 'true' }),
+    el('button', { type: 'button', className: 'action-button youtube-button', id: 'youtube-button', title: youtubeLabel, 'aria-label': youtubeLabel, onClick: async () => {
       await saveSession(); await browser.tabs.create({ url: youtubeDestination(song) });
-    }, { name: 'youtube', className: 'button youtube-button', id: 'youtube-button' })));
-  if (reader.status === 'loading') { view.append(loading(text('fetchingLyrics'), true)); return view; }
+    } }, icon('external'), 'YouTube'),
+    el('button', { type: 'button', className: 'translation-toggle', id: 'translation-toggle', role: 'switch', 'aria-checked': String(reader.translationVisible),
+      'aria-label': text(reader.translationVisible ? 'hideTranslation' : 'showTranslation'), disabled: !reader.lyrics, onClick: toggleTranslation },
+    el('span', { className: 'switch', 'aria-hidden': 'true' }), text('translation')));
+  const header = el('header', { className: 'reader-head' },
+    button(text('back'), () => navigate(reader.from || 'search'), { name: 'back', className: 'back-button', id: 'reader-back' }),
+    heading, actions);
+  const body = el('div', { className: 'reader-body' });
+  const view = el('section', { className: 'view reader' }, header, body);
+  if (reader.status === 'loading') { body.append(loading(text('fetchingLyrics'), true)); return view; }
   if (reader.status === 'error') {
-    view.append(empty(text(reader.error === 'notFound' ? 'noLyrics' : 'lyricsError'), text(reader.error === 'notFound' ? 'noLyricsText' : reader.error === 'timeout' ? 'timeout' : 'unavailable'), 'alert',
+    body.append(empty(text(reader.error === 'notFound' ? 'noLyrics' : 'lyricsError'), text(reader.error === 'notFound' ? 'noLyricsText' : reader.error === 'timeout' ? 'timeout' : 'unavailable'),
       button(text('retry'), () => openSong(song, reader.from, { refresh: true }), { name: 'refresh', id: 'retry-lyrics' })));
     return view;
   }
-  if (reader.translationVisible) view.append(translationPanel(reader));
+  if (reader.translationVisible && (reader.translating || reader.translationError)) body.append(translationPanel(reader));
   const lines = lyricLines(reader.lyrics);
   const translated = reader.translationVisible ? reader.translation?.lines : null;
-  view.append(el('div', { className: 'lyrics', id: 'lyrics', 'aria-label': text('lyricsLabel') }, lines.map((line, index) =>
+  body.append(el('div', { className: 'lyrics', id: 'lyrics', 'aria-label': text('lyricsLabel') }, lines.map((line, index) =>
     el('div', { className: `lyric-line ${line.trim() ? '' : 'blank'}`, 'data-line-index': index },
       line.trim() && el('p', { className: 'original' }, line),
       translated?.[index] && el('p', { className: 'translation', lang: 'pt' }, translated[index])))));
-  if (reader.cached) view.append(el('footer', { className: 'source' }, text('offlineFavorite')));
+  const notes = el('footer', { className: 'reader-notes' });
+  if (translated && reader.translation.url) notes.append(externalLink(text('publishedTranslation'), reader.translation.url, 'source-link'));
+  if (reader.cached) notes.append(el('p', {}, text('offlineFavorite')));
+  if (notes.childElementCount) body.append(notes);
   return view;
 }
 
 function translationPanel(reader) {
   const panel = el('div', { className: 'translation-panel' });
-  panel.append(el('p', { className: 'translation-caption' }, text('publishedTranslation'), ' · ',
-    externalLink('Letras.mus.br', reader.translation?.url || (reader.provider?.name === 'letras' ? reader.provider.url : 'https://www.letras.mus.br/'), '')),
-  el('div', { id: 'translation-status', className: 'translation-status', role: 'status' }));
+  panel.append(el('div', { id: 'translation-status', className: 'translation-status', role: 'status' }));
   const status = panel.querySelector('#translation-status');
   renderTranslationStatus(status, reader);
   return panel;
@@ -394,8 +427,8 @@ function renderSettings() {
     catch { toast('storageError'); }
   } }, el('option', { value: 'pt-BR' }, 'Português (Brasil)'), el('option', { value: 'en' }, 'English'));
   localeSelect.value = state.preferences.locale;
-  return el('section', { className: 'view' },
-    button(text('back'), () => navigate(settingsFrom), { name: 'back', className: 'back-button' }), intro(text('settings'), text('preferenceIntro')),
+  return el('section', { className: 'view settings-view' },
+    button(text('back'), () => navigate(settingsFrom), { name: 'back', className: 'back-button' }), collectionHeading(text('settings')),
     el('div', { className: 'settings-fields' }, el('label', { className: 'field', for: 'interface-language' }, text('language'), localeSelect)),
     el('section', { className: 'settings-section' }, el('h2', {}, text('about')), el('p', {}, text('aboutText')),
       externalLink(text('repository'), 'https://github.com/leobrqz/LyricsExtension'), el('span', { className: 'version' }, `v${browser.runtime.getManifest().version}`)),
@@ -422,7 +455,7 @@ async function boot() {
     }
   } catch {
     root.setAttribute('aria-busy', 'false');
-    root.replaceChildren(empty('Lyrics Extension', t(initialPreferences(navigator.language).locale, 'storageError'), 'alert', button(t(initialPreferences(navigator.language).locale, 'retry'), boot)));
+    root.replaceChildren(empty('Lyrics Extension', t(initialPreferences(navigator.language).locale, 'storageError'), button(t(initialPreferences(navigator.language).locale, 'retry'), boot)));
   }
 }
 
