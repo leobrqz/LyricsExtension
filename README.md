@@ -19,6 +19,12 @@
 </p>
 
 <p align="center">
+  <strong>Recommended installation</strong><br>
+  <a href="https://addons.mozilla.org/en-US/firefox/addon/lyrics-please/"><img src="public/firefox-addons-badge.png" alt="Get Lyrics, Please for Firefox" width="172" height="60"></a>
+</p>
+
+<p align="center">
+  <a href="https://sourceforge.net/projects/lyricsplease/files/latest/download"><img src="public/sourceforge-download-badge.png" alt="Download Lyrics, Please from SourceForge" height="36"></a>
   <a href="https://github.com/leobrqz/LyricsExtension/releases/latest"><img src="https://img.shields.io/badge/Download-GitHub-24292f?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Download Lyrics Extension from GitHub" height="36"></a>
 </p>
 
@@ -45,14 +51,16 @@
 
 ## Installation
 
-Download **LyricsExtension-Firefox-unsigned.zip** from the [latest release](https://github.com/leobrqz/LyricsExtension/releases/latest) and extract it to a folder. You need **Firefox Desktop 140 or later**; Node.js is only required to build from source.
+**Recommended:** install [Lyrics, Please from Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/lyrics-please/). Firefox handles installation and updates.
+
+For a temporary installation, download **LyricsExtension-Firefox-unsigned.zip** from [GitHub Releases](https://github.com/leobrqz/LyricsExtension/releases/latest) or [SourceForge](https://sourceforge.net/projects/lyricsplease/files/latest/download) and extract it to a folder. You need **Firefox Desktop 140 or later**; Node.js is only required to build from source.
 
 1. Open `about:debugging#/runtime/this-firefox` in Firefox.
 2. Click **Load Temporary Add-on…**.
 3. Select `manifest.json` inside the extracted folder.
 4. Open **Lyrics Extension** from the extensions menu and pin it to the toolbar if desired.
 
-This is an **unsigned development preview**. Temporary installations last until Firefox closes. Permanent installation in standard Firefox requires a [Mozilla-signed build](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/). Each release includes `SHA256SUMS.txt` to verify the downloaded ZIP.
+The unsigned ZIP uses temporary installation and must be loaded again after Firefox closes. Each GitHub release includes `SHA256SUMS.txt` to verify the downloaded ZIP.
 
 ## Usage
 
