@@ -20,7 +20,7 @@ const message = (type, payload = {}) => driver.executeScript('return browser.run
 
 before(async () => {
   server = await fixtureServer();
-  await buildExtension({ outdir: output, apiBase: server.base, letrasBase: server.base });
+  await buildExtension({ outdir: output, apiBase: server.base, letrasBase: server.base, myMemoryBase: server.base });
   driver = await startFirefox(output, { profile });
   await mkdir(path.join(projectRoot, 'artifacts'), { recursive: true });
 });
@@ -37,7 +37,7 @@ beforeEach(async () => {
   const snapshot = await message('BOOT');
   for (const favorite of snapshot.favorites) await message('FAVORITE', { song: favorite.song, enabled: false });
   await message('CLEAR_RECENTS');
-  await message('PREFERENCES', { value: { locale: 'pt-BR' } });
+  await message('PREFERENCES', { value: { locale: 'pt-BR', translationEngine: 'published', translationSource: 'auto' } });
   await (await element('#nav-favorites')).click();
   await driver.executeScript('const input=document.getElementById("search-input");input.value="";input.dispatchEvent(new Event("input",{bubbles:true}));');
   await (await element('#nav-search')).click();
@@ -55,6 +55,59 @@ async function readSong() {
   await search('Window'); await waitFor('.song-open');
   await (await element('.song-open')).click(); await waitFor('#lyrics .original');
 }
+
+async function chooseTranslation(engine, source = 'en') {
+  await (await element('#settings-button')).click();
+  await driver.executeScript('const select=document.getElementById("translation-engine");select.value=arguments[0];select.dispatchEvent(new Event("change",{bubbles:true}));', engine);
+  await driver.wait(async () => (await message('BOOT')).preferences.translationEngine === engine, 5000);
+  if (engine !== 'published') {
+    await driver.wait(async () => (await elements('#translation-source-language')).length > 0, 5000);
+    await driver.executeScript('const select=document.getElementById("translation-source-language");select.value=arguments[0];select.dispatchEvent(new Event("change",{bubbles:true}));', source);
+    await driver.wait(async () => (await message('BOOT')).preferences.translationSource === source, 5000);
+  }
+  await (await element('.settings-view > .back-button')).click();
+}
+
+test('settings switch translation providers and keep their cached favorite copies separate', async () => {
+  await readSong();
+  await (await element('#favorite-toggle')).click();
+  await (await element('#translation-toggle')).click();
+  await waitFor('#lyrics .translation');
+  const publishedRequests = server.requests.filter(url => url.endsWith('traducao.html')).length;
+  await chooseTranslation('mymemory');
+  await waitFor('#translation-source');
+  assert.match(await (await element('#translation-source')).getText(), /automática.*MyMemory/);
+  await driver.wait(async () => (await message('BOOT')).favorites[0].reader.translation?.provider === 'mymemory', 5000);
+  assert.ok(server.requests.some(url => url.startsWith('/get?')));
+  assert.equal(server.requests.filter(url => url.endsWith('traducao.html')).length, publishedRequests);
+  assert.equal((await message('BOOT')).session.reader.translation.lines[0], 'A chuva canta na minha janela');
+  await chooseTranslation('published');
+  await waitFor('#lyrics .translation');
+  assert.equal((await message('BOOT')).session.reader.translation.provider, 'letras');
+  const count = server.requests.length;
+  server.setUnavailable(true);
+  await chooseTranslation('mymemory');
+  await waitFor('#translation-source');
+  await openExtension(driver);
+  await waitFor('#translation-source');
+  assert.equal((await message('BOOT')).preferences.translationEngine, 'mymemory');
+  assert.equal(server.requests.length, count, 'switching providers and reopening reuses the matching local cache');
+});
+
+test('MyMemory quota errors preserve original lyrics and can be retried', async () => {
+  await readSong();
+  await chooseTranslation('mymemory');
+  server.setTranslationFailure('quota');
+  await (await element('#translation-toggle')).click();
+  await waitFor('#retry-translation');
+  assert.match(await (await element('#translation-status')).getText(), /cota diária/);
+  assert.equal((await elements('#lyrics .translation')).length, 0);
+  assert.equal((await elements('#lyrics .original')).length, sampleLyrics.split('\n').filter(Boolean).length);
+  server.setTranslationFailure(null);
+  await (await element('#retry-translation')).click();
+  await waitFor('#translation-source');
+  assert.equal((await elements('#lyrics .translation')).length, sampleLyrics.split('\n').filter(Boolean).length);
+});
 
 test('title-only search updates without Enter, opens originals, and preserves the query on return', async () => {
   await search('Window'); await waitFor('.song-open');

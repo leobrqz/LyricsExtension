@@ -31,6 +31,35 @@ const messages = {
   emptyFilterText: ['Tente outro título ou artista, ou procure entre todas as músicas.', 'Try another title or artist, or search all songs.'],
   searchAll: ['Buscar todas as músicas', 'Search all songs'],
   translation: ['Tradução', 'Translation'],
+  translationEngine: ['Tradução em português', 'Portuguese translation'],
+  enginePublished: ['Letras · tradução publicada', 'Letras · published translation'],
+  engineBergamot: ['Bergamot · no dispositivo', 'Bergamot · on device'],
+  engineMymemory: ['MyMemory · online', 'MyMemory · online'],
+  sourceLanguage: ['Idioma da letra', 'Lyrics language'],
+  detectLanguage: ['Detectar automaticamente', 'Detect automatically'],
+  publishedHelp: ['Usa a tradução publicada no Letras, quando disponível.', 'Uses the translation published on Letras, when available.'],
+  bergamotHelp: ['Traduz neste computador. Os modelos de inglês → português ocupam cerca de 36 MB; outros idiomas usam um modelo adicional. Depois do download, funciona offline.', 'Translates on this computer. English → Portuguese models occupy about 36 MB; other languages need an additional model. Works offline after downloading.'],
+  bergamotLanguages: ['Idiomas: inglês, espanhol, francês, alemão, italiano, russo, ucraniano, tcheco, búlgaro e estoniano.', 'Languages: English, Spanish, French, German, Italian, Russian, Ukrainian, Czech, Bulgarian, and Estonian.'],
+  mymemoryHelp: ['Envia os versos ao MyMemory pela sua conexão. Gratuito, com cota diária. Não exige chave de API.', 'Sends the verses to MyMemory through your connection. Free, with a daily quota. No API key required.'],
+  automaticHelp: ['O modo escolhido vale para todas as músicas. Traduções automáticas podem errar expressões e ambiguidades.', 'Your chosen mode applies to every song. Automatic translations can misread expressions and ambiguities.'],
+  modelStorage: ['Modelos salvos: {size} MB', 'Saved models: {size} MB'],
+  clearModels: ['Remover modelos baixados', 'Remove downloaded models'],
+  modelsRemoved: ['Modelos removidos', 'Models removed'],
+  downloadingModel: ['Baixando modelo: {loaded} / {total} MB…', 'Downloading model: {loaded} / {total} MB…'],
+  loadingModel: ['Preparando tradução local…', 'Preparing local translation…'],
+  loadingAutomaticTranslation: ['Traduzindo…', 'Translating…'],
+  translatingLines: ['Traduzindo: {done} / {total} versos…', 'Translating: {done} / {total} lines…'],
+  automaticTranslation: ['Tradução automática · {provider}', 'Automatic translation · {provider}'],
+  translationQuota: ['A cota diária do MyMemory foi atingida. Tente mais tarde ou escolha Bergamot nas preferências.', 'MyMemory’s daily quota has been reached. Try later or choose Bergamot in Settings.'],
+  translationLanguage: ['Não foi possível identificar o idioma. Escolha o idioma da letra nas preferências.', 'Couldn’t identify the language. Choose the lyrics language in Settings.'],
+  translationAlreadyPortuguese: ['Esta letra foi identificada como português. Se estiver incorreto, escolha o idioma nas preferências.', 'These lyrics were identified as Portuguese. If this is incorrect, choose their language in Settings.'],
+  translationUnsupported: ['O Bergamot não tem um modelo para este idioma nesta versão. Escolha MyMemory ou ajuste o idioma nas preferências.', 'This version of Bergamot has no model for this language. Choose MyMemory or adjust the lyrics language in Settings.'],
+  translationModelDownload: ['Não foi possível baixar ou salvar o modelo. Confira a conexão e o espaço disponível, e tente novamente.', 'Couldn’t download or save the model. Check your connection and available space, then try again.'],
+  translationModelPermission: ['O Firefox ainda não autorizou o acesso ao servidor dos modelos. Permita o download para usar o Bergamot.', 'Firefox has not granted access to the model server. Allow the download to use Bergamot.'],
+  allowModelDownload: ['Permitir download', 'Allow model download'],
+  translationServicePermission: ['O Firefox ainda não autorizou o acesso ao MyMemory. Permita o acesso para traduzir os versos com esse serviço.', 'Firefox has not granted access to MyMemory. Allow access to translate the verses with this service.'],
+  allowTranslationService: ['Permitir MyMemory', 'Allow MyMemory'],
+  translationLocalFailed: ['A tradução local não pôde ser concluída. Tente novamente ou escolha MyMemory nas preferências.', 'Local translation couldn’t finish. Try again or choose MyMemory in Settings.'],
   showTranslation: ['Mostrar tradução em português', 'Show Portuguese translation'], hideTranslation: ['Ocultar tradução', 'Hide translation'],
   loadingTranslation: ['Buscando a tradução publicada…', 'Finding the published translation…'],
   publishedTranslation: ['Tradução em português · Letras.mus.br', 'Portuguese translation · Letras.mus.br'],
@@ -46,8 +75,8 @@ const messages = {
   about: ['Sobre o projeto', 'About the project'],
   aboutText: ['Código aberto, sem conta e sem anúncios.', 'Open source, no account, no ads.'],
   repository: ['Código e contribuições', 'Code and contributions'], privacy: ['Seus dados', 'Your data'],
-  privacyText: ['Suas buscas são enviadas ao lyrics.ovh. Letras e traduções publicadas são consultadas diretamente no Letras pela sua conexão. A API fornece a letra quando o Letras não está disponível. Recentes, favoritos e preferências ficam salvos neste Firefox. Não lemos seu histórico de navegação nem coletamos telemetria.', 'Your searches are sent to lyrics.ovh. Lyrics and published translations are requested directly from Letras through your connection. The API supplies lyrics when Letras is unavailable. Recent songs, favorites, and preferences stay in this Firefox. We do not read browsing history or collect telemetry.'],
-  contentSources: ['A tradução disponível é a publicada em português no Letras. A disponibilidade depende de cada música e do acesso ao site.', 'Translations are the Portuguese versions published on Letras. Availability depends on the song and access to the website.'],
+  privacyText: ['Buscas vão ao lyrics.ovh. Letras e traduções publicadas são consultadas no Letras. Se você escolher MyMemory, os versos são enviados ao serviço pela sua conexão. Bergamot baixa modelos e traduz neste computador. Favoritos, recentes e preferências ficam neste Firefox. Não lemos seu histórico nem coletamos telemetria.', 'Searches go to lyrics.ovh. Lyrics and published translations are requested from Letras. If you choose MyMemory, verses are sent to that service through your connection. Bergamot downloads models and translates on this computer. Favorites, recent songs, and preferences stay in this Firefox. No browsing history access or telemetry.'],
+  contentSources: ['Traduções publicadas vêm do Letras. Bergamot e MyMemory são opções de tradução automática em português.', 'Published translations come from Letras. Bergamot and MyMemory are optional automatic translations into Portuguese.'],
   storedData: ['Favoritos incluem a letra e traduções já carregadas para permitir a releitura. Recentes guarda as últimas 50 músicas abertas e pode ser limpo nessa aba. A tela atual é lembrada somente durante esta sessão do navegador.', 'Favorites include previously loaded lyrics and translations for reading again. Recent keeps the last 50 opened songs and can be cleared from that tab. Your current screen is remembered only during this browser session.'],
   services: ['Fontes de conteúdo', 'Content sources'],
   storageError: ['Não foi possível salvar a alteração. Tente novamente.', 'Couldn’t save this change. Please try again.'],
@@ -58,7 +87,7 @@ const messages = {
 
 export function initialPreferences(language = 'en') {
   const locale = language.toLowerCase().startsWith('pt') ? 'pt-BR' : 'en';
-  return { locale };
+  return { locale, translationEngine: 'published', translationSource: 'auto' };
 }
 
 export function t(locale, key, values = {}) {

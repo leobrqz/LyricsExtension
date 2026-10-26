@@ -2,8 +2,11 @@ import { el, icon } from './dom.js';
 import { t, initialPreferences } from './i18n.js';
 import { searchSongs } from './api.js';
 import { getSongLyrics, getPublishedTranslation, letrasTitleMatches } from './letras.js';
+import { translateAutomatic, cachedTranslation, translationKey, declaredTranslationOrigins, SOURCE_LANGUAGES } from './translation.js';
+import { modelCacheSize, clearModels } from './bergamot.js';
 import { filterFavorites, lyricLines, confidentMatch, matchedVideo, youtubeDestination, youtubeVideoUrl } from './model.js';
 
+const appName = browser.i18n.getMessage('extensionName');
 const root = document.getElementById('app');
 const toastElement = document.getElementById('toast');
 let state;
@@ -19,6 +22,7 @@ let toastTimer;
 let bootGeneration = 0;
 let lastView;
 let settingsFrom = 'search';
+let modelBytes = null;
 
 if (new URLSearchParams(location.search).has('standalone')) document.documentElement.classList.add('standalone');
 const rpc = (type, payload = {}) => browser.runtime.sendMessage({ type, ...payload });
@@ -93,7 +97,7 @@ function render({ focus = false, scroll } = {}) {
   document.documentElement.lang = state.preferences.locale;
   root.setAttribute('aria-busy', 'false');
   const header = el('header', { className: 'topbar' },
-    el('button', { className: 'brand', type: 'button', 'aria-label': `Lyrics · ${text('search')}`, onClick: () => navigate('search') }, 'lyrics'),
+    el('button', { className: 'brand', type: 'button', 'aria-label': `${appName} · ${text('search')}`, onClick: () => navigate('search') }, appName),
     button(text('settings'), () => navigate('settings'), { name: 'settings', className: `icon-button ${state.session.view === 'settings' ? 'active' : ''}`, id: 'settings-button' }));
   const content = el('main', { id: 'content', tabindex: '-1', 'aria-label': text(state.session.view === 'reader' ? 'lyricsLabel' : state.session.view), onScroll: () => { captureScroll(); scheduleSave(); } });
   content.append(state.session.view === 'reader' ? renderReader() : state.session.view === 'favorites' ? renderFavorites() : state.session.view === 'recents' ? renderRecents() : state.session.view === 'settings' ? renderSettings() : renderSearch());
@@ -128,6 +132,7 @@ function navigate(view) {
   state.session.view = view;
   scheduleSave();
   render({ focus: view !== 'reader' });
+  if (view === 'settings') modelCacheSize().then(size => { modelBytes = size; if (state.session.view === 'settings') render(); }).catch(() => {});
   if (view === 'search' && state.session.query.trim() && !state.session.results.length) runSearch();
   if (view === 'reader' && state.session.reader?.translationVisible) startTranslation();
 }
@@ -342,6 +347,8 @@ function renderReader() {
   if (reader.translationVisible && (reader.translating || reader.translationError)) body.append(translationPanel(reader));
   const lines = lyricLines(reader.lyrics);
   const translated = reader.translationVisible ? reader.translation?.lines : null;
+  if (translated && reader.translation.automatic) body.append(el('p', { className: 'translation-credit', id: 'translation-source' },
+    text('automaticTranslation', { provider: reader.translation.provider === 'bergamot' ? 'Bergamot · offline' : 'MyMemory' })));
   body.append(el('div', { className: 'lyrics', id: 'lyrics', 'aria-label': text('lyricsLabel') }, lines.map((line, index) =>
     el('div', { className: `lyric-line ${line.trim() ? '' : 'blank'}`, 'data-line-index': index },
       line.trim() && el('p', { className: 'original' }, line),
@@ -363,19 +370,41 @@ function translationPanel(reader) {
 
 function renderTranslationStatus(container, reader) {
   container.replaceChildren();
-  if (reader.translating) container.append(text('loadingTranslation'));
+  if (reader.translating) {
+    const progress = reader.translationProgress;
+    const key = state.preferences.translationEngine === 'published' ? 'loadingTranslation' : progress?.stage === 'downloading' ? 'downloadingModel' : progress?.stage === 'translating' ? 'translatingLines' : state.preferences.translationEngine === 'bergamot' ? 'loadingModel' : 'loadingAutomaticTranslation';
+    container.append(text(key, { ...progress, loaded: ((progress?.loaded || 0) / 1e6).toFixed(1), total: progress?.stage === 'downloading' ? (progress.total / 1e6).toFixed(1) : progress?.total }));
+  }
   else if (reader.translationError) {
-    const key = ['translationNotFound', 'translationMismatch'].includes(reader.translationError) ? reader.translationError : 'translationUnavailable';
+    const key = ['translationNotFound', 'translationMismatch', 'translationQuota', 'translationLanguage', 'translationAlreadyPortuguese', 'translationUnsupported', 'translationModelDownload', 'translationModelPermission', 'translationServicePermission', 'translationLocalFailed', 'timeout'].includes(reader.translationError) ? reader.translationError : 'translationUnavailable';
     container.append(el('p', {}, text(key)),
-      button(text('retry'), startTranslation, { name: 'refresh', id: 'retry-translation' }));
-    if (reader.provider?.name !== 'letras') container.append(' ',
+      key === 'translationModelPermission'
+        ? button(text('allowModelDownload'), allowTranslationAccess, { id: 'allow-model-download' })
+        : key === 'translationServicePermission' ? button(text('allowTranslationService'), allowTranslationAccess, { id: 'allow-translation-service' })
+        : button(text('retry'), startTranslation, { name: 'refresh', id: 'retry-translation' }));
+    if (state.preferences.translationEngine === 'published' && reader.provider?.name !== 'letras') container.append(' ',
       button(text('reloadLyrics'), () => openSong(reader.song, reader.from, { refresh: true }), { name: 'refresh', id: 'reload-lyrics' }));
   }
+}
+
+function allowTranslationAccess() {
+  const reader = state.session.reader;
+  if (!reader?.translationPermissionOrigins?.length) return;
+  // Do not await before permissions.request: Firefox requires a direct user gesture.
+  // Persist the reader because Firefox may close the toolbar popup for its prompt.
+  saveSession().catch(() => {});
+  // Granted hosts are normalized by Firefox, but requests must still match the
+  // declared path pattern (notably the dedicated Mozilla model bucket).
+  const origins = declaredTranslationOrigins(reader.translationPermissionOrigins, browser.runtime.getManifest());
+  browser.permissions.request({ origins }).then(granted => {
+    if (granted && state.session.reader === reader && reader.translationVisible) startTranslation();
+  }).catch(() => { if (state.session.reader === reader) render(); });
 }
 
 function toggleTranslation() {
   const reader = state.session.reader;
   reader.translationVisible = !reader.translationVisible;
+  if (reader.translationVisible) reader.translation = cachedTranslation(reader, state.preferences.translationEngine, state.preferences.translationSource);
   if (!reader.translationVisible) { translationController?.abort(); reader.translating = false; }
   scheduleSave(); render();
   if (reader.translationVisible) startTranslation();
@@ -386,13 +415,24 @@ async function startTranslation() {
   if (!reader?.translationVisible) return;
   translationController?.abort();
   const controller = new AbortController(); translationController = controller;
-  if (reader.translation?.provider === 'letras') { reader.translating = false; render(); return; }
+  const { translationEngine: engine, translationSource: source } = state.preferences;
+  reader.translation = cachedTranslation(reader, engine, source);
+  if (reader.translation) { reader.translating = false; reader.translationError = null; render(); return; }
   reader.translating = true; reader.translationError = null;
+  reader.translationPermissionOrigins = null;
+  reader.translationProgress = null;
   render();
   try {
-    const result = await getPublishedTranslation(reader, { signal: controller.signal });
+    let lastProgress = 0;
+    const options = { signal: controller.signal, onProgress: progress => {
+      if (controller.signal.aborted || state.session.reader !== reader) return;
+      reader.translationProgress = progress;
+      if (Date.now() - lastProgress > 150) { lastProgress = Date.now(); render(); }
+    } };
+    const result = engine === 'published' ? await getPublishedTranslation(reader, options) : await translateAutomatic(reader.lyrics, engine, source, options);
     if (controller.signal.aborted || state.session.reader !== reader) return;
     reader.translation = result; reader.translating = false;
+    if (result) { reader.translationCache ||= {}; reader.translationCache[translationKey(engine, source)] = result; }
     reader.translationError = result ? null : 'translationNotFound';
     await saveSession(); await cacheFavorite(reader);
     render();
@@ -400,6 +440,7 @@ async function startTranslation() {
     if (error.name === 'AbortError' || controller.signal.aborted || state.session.reader !== reader) return;
     reader.translating = false;
     reader.translationError = error.code || 'translationUnavailable';
+    reader.translationPermissionOrigins = ['translationModelPermission', 'translationServicePermission'].includes(error.code) ? error.origins : null;
     scheduleSave(); render();
   }
 }
@@ -427,14 +468,51 @@ function renderSettings() {
     catch { toast('storageError'); }
   } }, el('option', { value: 'pt-BR' }, 'Português (Brasil)'), el('option', { value: 'en' }, 'English'));
   localeSelect.value = state.preferences.locale;
+  const updateTranslation = async value => {
+    try {
+      translationController?.abort();
+      const reader = state.session.reader;
+      if (reader?.translation) {
+        reader.translationCache ||= {};
+        const previous = reader.translation;
+        reader.translationCache[translationKey(previous.provider === 'letras' ? 'published' : previous.provider, previous.requestedSource)] = previous;
+      }
+      state.preferences = await rpc('PREFERENCES', { value });
+      if (reader) {
+        reader.translating = false; reader.translationError = null;
+        reader.translation = cachedTranslation(reader, state.preferences.translationEngine, state.preferences.translationSource);
+      }
+      await saveSession(); render();
+    } catch { toast('storageError'); }
+  };
+  const engineSelect = el('select', { id: 'translation-engine', onChange: event => updateTranslation({ translationEngine: event.target.value }) },
+    el('option', { value: 'published' }, text('enginePublished')), el('option', { value: 'bergamot' }, text('engineBergamot')), el('option', { value: 'mymemory' }, text('engineMymemory')));
+  engineSelect.value = state.preferences.translationEngine;
+  const names = new Intl.DisplayNames([state.preferences.locale], { type: 'language' });
+  const sourceSelect = el('select', { id: 'translation-source-language', onChange: event => updateTranslation({ translationSource: event.target.value }) },
+    el('option', { value: 'auto' }, text('detectLanguage')), ...Object.keys(SOURCE_LANGUAGES).map(code => el('option', { value: code }, names.of(code))));
+  sourceSelect.value = state.preferences.translationSource;
+  const engine = state.preferences.translationEngine;
+  const translationSettings = el('section', { className: 'settings-section translation-settings' },
+    el('label', { className: 'field', for: 'translation-engine' }, text('translationEngine'), engineSelect),
+    el('p', { className: 'small' }, text(engine === 'published' ? 'publishedHelp' : engine === 'bergamot' ? 'bergamotHelp' : 'mymemoryHelp')));
+  if (engine !== 'published') translationSettings.append(el('label', { className: 'field', for: 'translation-source-language' }, text('sourceLanguage'), sourceSelect),
+    engine === 'bergamot' && el('p', { className: 'small' }, text('bergamotLanguages')), el('p', { className: 'small' }, text('automaticHelp')));
+  if (modelBytes > 0) translationSettings.append(el('p', { className: 'small', id: 'model-storage' }, text('modelStorage', { size: (modelBytes / 1e6).toFixed(1) })),
+    button(text('clearModels'), async () => {
+      try { await clearModels(); modelBytes = 0; render(); toast('modelsRemoved'); }
+      catch { toast('storageError'); }
+    }, { className: 'text-button', id: 'clear-models' }));
   return el('section', { className: 'view settings-view' },
     button(text('back'), () => navigate(settingsFrom), { name: 'back', className: 'back-button' }), collectionHeading(text('settings')),
     el('div', { className: 'settings-fields' }, el('label', { className: 'field', for: 'interface-language' }, text('language'), localeSelect)),
+    translationSettings,
     el('section', { className: 'settings-section' }, el('h2', {}, text('about')), el('p', {}, text('aboutText')),
       externalLink(text('repository'), 'https://github.com/leobrqz/LyricsExtension'), el('span', { className: 'version' }, `v${browser.runtime.getManifest().version}`)),
     el('section', { className: 'settings-section' }, el('h2', {}, text('privacy')), el('p', {}, text('privacyText')), el('p', { className: 'small' }, text('storedData'))),
     el('section', { className: 'settings-section' }, el('h2', {}, text('services')), externalLink('lyrics.ovh', 'https://github.com/NTag/lyrics.ovh'),
-      externalLink('Letras.mus.br', 'https://www.letras.mus.br/'), el('p', { className: 'small' }, text('contentSources'))));
+      externalLink('Letras.mus.br', 'https://www.letras.mus.br/'), externalLink('Bergamot', 'https://github.com/browsermt/bergamot-translator'),
+      externalLink('MyMemory', 'https://mymemory.translated.net/doc/spec.php'), el('p', { className: 'small' }, text('contentSources'))));
 }
 
 async function boot() {
@@ -452,10 +530,10 @@ async function boot() {
     if (state.session.view === 'reader' && (state.session.reader?.status === 'loading' || differentLetrasVersion(state.session.reader))) {
       const reader = state.session.reader;
       openSong(reader.song, reader.from, { refresh: true });
-    }
+    } else if (state.session.view === 'reader' && state.session.reader?.translationVisible) startTranslation();
   } catch {
     root.setAttribute('aria-busy', 'false');
-    root.replaceChildren(empty('Lyrics Extension', t(initialPreferences(navigator.language).locale, 'storageError'), button(t(initialPreferences(navigator.language).locale, 'retry'), boot)));
+    root.replaceChildren(empty(appName, t(initialPreferences(navigator.language).locale, 'storageError'), button(t(initialPreferences(navigator.language).locale, 'retry'), boot)));
   }
 }
 

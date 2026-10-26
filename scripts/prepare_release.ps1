@@ -9,13 +9,8 @@ try {
     & $npmCommand.Source run package
     if ($LASTEXITCODE -ne 0) { throw 'Extension build or packaging failed.' }
     $directory = Join-Path $projectRoot 'artifacts/release'
-    New-Item -ItemType Directory -Path $directory -Force | Out-Null
-    $sourceArchive = Join-Path $projectRoot "artifacts/lyrics_extension-$($product.Version).zip"
-    $archivePath = Join-Path $directory 'LyricsExtension-Firefox-unsigned.zip'
-    Copy-Item -LiteralPath $sourceArchive -Destination $archivePath -Force
-    $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    [IO.File]::WriteAllText((Join-Path $directory 'SHA256SUMS.txt'), "$hash  LyricsExtension-Firefox-unsigned.zip`n", [Text.Encoding]::ASCII)
-    $verified = @(Assert-ReleaseArtifacts $directory $product)
-    Write-Output "Prepared v$($product.Version): unsigned Firefox ZIP and SHA-256 checksum."
+    $sourceArchive = Join-Path $projectRoot "artifacts/lyrics_please-$($product.Version).zip"
+    $verified = @(Write-ReleaseArtifacts $directory $sourceArchive $product)
+    Write-Output "Prepared v$($product.Version): Firefox ZIP, Mozilla Store upload ZIP, and SHA-256 checksums."
     Write-Output $verified
 } finally { Pop-Location }

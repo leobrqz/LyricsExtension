@@ -1,6 +1,6 @@
 {
-  "name": "lyrics-extension",
-  "version": "0.3.0",
+  "name": "lyrics-please",
+  "version": "0.4.0",
   "private": true,
   "description": "Find, read, translate and save song lyrics in Firefox.",
   "type": "module",
@@ -14,6 +14,7 @@
     "test": "node --test tests/unit/*.test.js",
     "test:firefox": "node --test --test-concurrency=1 tests/firefox/*.test.js",
     "test:live": "node scripts/live-check.mjs",
+    "test:translations": "node scripts/compare-translations.mjs",
     "lint": "npm run build && web-ext lint --source-dir dist --warnings-as-errors",
     "check": "npm test && npm run lint && npm run test:firefox",
     "package": "npm run build && web-ext build --source-dir dist --artifacts-dir artifacts --overwrite-dest",
@@ -24,5 +25,9 @@
     "esbuild": "^0.28.2",
     "selenium-webdriver": "^4.51.0",
     "web-ext": "^10.8.0"
+  },
+  "dependencies": {
+    "@browsermt/bergamot-translator": "0.4.9",
+    "franc-min": "6.2.0"
   }
 }

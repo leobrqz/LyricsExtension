@@ -1,6 +1,6 @@
 # Contributing
 
-Lyrics Extension prioritizes flexible search, comfortable reading, personal favorites, and a simple installation. Read the [README](README.md) for the current product behavior.
+Lyrics, Please prioritizes flexible search, comfortable reading, personal favorites, and a simple installation. Read the [README](README.md) for the current product behavior.
 
 ## Set up the project
 

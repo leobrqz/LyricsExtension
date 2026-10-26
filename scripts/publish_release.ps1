@@ -23,14 +23,14 @@ Push-Location $projectRoot
 try {
     $product = Get-ReleaseProduct $projectRoot
     $tag = "v$($product.Version)"
-    if (-not $Title) { $Title = "$tag - Lyrics Extension preview" }
+    if (-not $Title) { $Title = "$tag - Lyrics, Please" }
     if (-not $Title.Contains($product.Version)) { throw 'The release title must include the version.' }
     $notesPath = (Resolve-Path -LiteralPath $NotesFile).Path
     if (-not [IO.File]::ReadAllText($notesPath).Trim()) { throw 'Release notes cannot be empty.' }
     if ((Invoke-GitChecked @('branch', '--show-current')) -ne 'main') { throw 'Publish releases from main.' }
     $directory = Join-Path $projectRoot 'artifacts/release'
     $artifacts = @(Assert-ReleaseArtifacts $directory $product)
-    if ($ValidateOnly) { Write-Output "Validated $tag, package contents, version, production endpoints, and SHA-256 checksum."; return }
+    if ($ValidateOnly) { Write-Output "Validated $tag, Firefox and Mozilla Store ZIPs, package contents, and SHA-256 checksums."; return }
     if (Invoke-GitChecked @('status', '--porcelain')) { throw 'Commit intended changes before publishing.' }
     $repository = (Invoke-GhChecked @('repo', 'view', '--json', 'nameWithOwner') | ConvertFrom-Json).nameWithOwner
     $headCommit = Invoke-GitChecked @('rev-parse', 'HEAD')

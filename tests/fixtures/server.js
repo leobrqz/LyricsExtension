@@ -49,6 +49,12 @@ export async function fixtureServer() {
       return;
     }
     if (unavailable) { response.writeHead(503); response.end('{}'); return; }
+    if (url.pathname === '/get') {
+      if (translationFailure === 'quota') { response.end(JSON.stringify({ responseStatus: 429, quotaFinished: true })); return; }
+      const index = sampleLyrics.split('\n').indexOf(url.searchParams.get('q'));
+      response.end(JSON.stringify({ responseStatus: 200, responseData: { translatedText: translations[index] || 'Tradução de teste' } }));
+      return;
+    }
     if (url.pathname.startsWith('/night-letters/') || url.pathname.startsWith('/other-voices/')) {
       response.setHeader('Content-Type', 'text/html; charset=utf-8');
       const translated = url.pathname.endsWith('/traducao.html');

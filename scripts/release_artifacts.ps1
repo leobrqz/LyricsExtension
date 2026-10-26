@@ -21,18 +21,42 @@ function Read-ReleaseZipText([IO.Compression.ZipArchive]$Archive, [string]$Name)
     try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
 }
 
+function Get-ReleasePackageNames([hashtable]$Product) {
+    return @("LyricsPlease-v$($Product.Version)-firefox-unsigned.zip", "LyricsPlease-v$($Product.Version)-mozilla-store.zip")
+}
+
+function Write-ReleaseArtifacts([string]$Directory, [string]$SourceArchive, [hashtable]$Product) {
+    New-Item -ItemType Directory -Path $Directory -Force | Out-Null
+    $hash = (Get-FileHash -LiteralPath $SourceArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sums = @()
+    foreach ($name in Get-ReleasePackageNames $Product) {
+        Copy-Item -LiteralPath $SourceArchive -Destination (Join-Path $Directory $name) -Force
+        $sums += "$hash  $name"
+    }
+    [IO.File]::WriteAllText((Join-Path $Directory 'SHA256SUMS.txt'), ($sums -join "`n") + "`n", [Text.Encoding]::ASCII)
+    return @(Assert-ReleaseArtifacts $Directory $Product)
+}
+
 function Assert-ReleaseArtifacts([string]$Directory, [hashtable]$Product) {
-    $packageName = 'LyricsExtension-Firefox-unsigned.zip'
-    $packagePath = Join-Path $Directory $packageName
+    $packageNames = @(Get-ReleasePackageNames $Product)
+    $packagePaths = @($packageNames | ForEach-Object { Join-Path $Directory $_ })
     $sumsPath = Join-Path $Directory 'SHA256SUMS.txt'
     $sums = @([IO.File]::ReadAllLines($sumsPath) | Where-Object { $_.Trim() })
-    if ($sums.Count -ne 1 -or $sums[0] -notmatch '^([a-fA-F0-9]{64})  LyricsExtension-Firefox-unsigned\.zip$') {
-        throw 'The checksum file must contain exactly the unsigned Firefox ZIP.'
+    if ($sums.Count -ne $packageNames.Count) {
+        throw 'The checksum file must contain the Firefox and Mozilla Store ZIPs.'
     }
-    if ((Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash -ne $Matches[1]) {
-        throw 'The Firefox ZIP does not match its SHA-256 checksum.'
+    $hashes = @()
+    for ($index = 0; $index -lt $packageNames.Count; $index++) {
+        if ($sums[$index] -notmatch '^([a-fA-F0-9]{64})  (.+)$' -or $Matches[2] -cne $packageNames[$index]) {
+            throw "Invalid checksum entry for $($packageNames[$index])."
+        }
+        $expectedHash = $Matches[1]
+        $hash = (Get-FileHash -LiteralPath $packagePaths[$index] -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($hash -ne $expectedHash) { throw "SHA-256 mismatch: $($packageNames[$index])." }
+        $hashes += $hash
     }
-    $archive = [IO.Compression.ZipFile]::OpenRead($packagePath)
+    if ($hashes[0] -ne $hashes[1]) { throw 'The Firefox and Mozilla Store ZIPs must be identical.' }
+    $archive = [IO.Compression.ZipFile]::OpenRead($packagePaths[0])
     try {
         $names = @($archive.Entries | ForEach-Object { $_.FullName })
         foreach ($name in @('manifest.json', 'popup.html', 'app.js', 'background.js', 'styles.css', 'icons/icon.svg',
@@ -43,7 +67,8 @@ function Assert-ReleaseArtifacts([string]$Directory, [hashtable]$Product) {
         foreach ($name in $names) {
             if ($name -match '(^|/)\.\.(/|$)|^[/\\]|\\' -or
                 ($name -notmatch '^(manifest\.json|popup\.html|app\.js|background\.js|styles\.css|README\.md|LICENSE)$' -and
-                 $name -notmatch '^(icons|_locales)/')) { throw "Unexpected archive entry: $name" }
+                 $name -notmatch '^(icons|_locales|licenses)/' -and
+                 $name -notmatch '^bergamot/(translator-worker\.js|bergamot-translator-worker\.(js|wasm))?$')) { throw "Unexpected archive entry: $name" }
         }
         $manifestText = Read-ReleaseZipText $archive 'manifest.json'
         $manifest = $manifestText | ConvertFrom-Json
@@ -52,6 +77,9 @@ function Assert-ReleaseArtifacts([string]$Directory, [hashtable]$Product) {
         }
         $expectedHosts = @('https://api.lyrics.ovh/*', 'https://www.letras.mus.br/*', 'https://letras.mus.br/*')
         if (Compare-Object $expectedHosts @($manifest.host_permissions)) { throw 'Unexpected production host permissions.' }
+        $expectedOptionalHosts = @('https://api.mymemory.translated.net/*', 'https://bergamot.s3.amazonaws.com/*',
+            'https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/*')
+        if (Compare-Object $expectedOptionalHosts @($manifest.optional_host_permissions)) { throw 'Unexpected optional translation host permissions.' }
         if ($manifestText -match 'localhost|127\.0\.0\.1') { throw 'Test endpoints must not be distributed.' }
         $readme = Read-ReleaseZipText $archive 'README.md'
         if (-not $readme.Contains('## Privacy') -or -not $readme.Contains('Copyright (c) Basile Bruneau') -or
@@ -59,6 +87,11 @@ function Assert-ReleaseArtifacts([string]$Directory, [hashtable]$Product) {
             throw 'The package must preserve privacy information and dependency notices.'
         }
         if (-not (Read-ReleaseZipText $archive 'LICENSE').StartsWith('MIT License')) { throw 'Missing project MIT license.' }
+        foreach ($name in @('bergamot/translator-worker.js', 'bergamot/bergamot-translator-worker.js',
+                'bergamot/bergamot-translator-worker.wasm', 'licenses/Bergamot-MPL-2.0.txt', 'licenses/franc-MIT.txt',
+                'licenses/trigram-utils-MIT.txt', 'licenses/n-gram-MIT.txt', 'licenses/collapse-white-space-MIT.txt')) {
+            if ($names -notcontains $name) { throw "Missing translation engine asset or license: $name" }
+        }
     } finally { $archive.Dispose() }
-    return @($packagePath, $sumsPath)
+    return @($packagePaths) + @($sumsPath)
 }

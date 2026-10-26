@@ -47,6 +47,8 @@ export class Repository {
   validPreferences(value) {
     return {
       locale: ['en', 'pt-BR'].includes(value.locale) ? value.locale : this.preferences.locale,
+      translationEngine: ['published', 'bergamot', 'mymemory'].includes(value.translationEngine) ? value.translationEngine : this.preferences.translationEngine,
+      translationSource: ['auto', 'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'uk', 'nl', 'pl', 'sv', 'tr', 'ar', 'hi', 'cs', 'bg', 'et'].includes(value.translationSource) ? value.translationSource : this.preferences.translationSource,
     };
   }
 
