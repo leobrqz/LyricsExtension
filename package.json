@@ -19,6 +19,7 @@
     "check": "npm test && npm run lint && npm run test:firefox",
     "package": "npm run build && web-ext build --source-dir dist --artifacts-dir artifacts --overwrite-dest",
     "release:prepare": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_release.ps1",
+    "release:source": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_source.ps1",
     "release:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1"
   },
   "devDependencies": {

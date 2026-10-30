@@ -30,6 +30,8 @@ try {
     if ((Invoke-GitChecked @('branch', '--show-current')) -ne 'main') { throw 'Publish releases from main.' }
     $directory = Join-Path $projectRoot 'artifacts/release'
     $artifacts = @(Assert-ReleaseArtifacts $directory $product)
+    $localSource = Join-Path $projectRoot "artifacts/amo/LyricsPlease-v$($product.Version)-source.zip"
+    if (-not (Test-Path -LiteralPath $localSource -PathType Leaf)) { throw 'Create the local Mozilla source ZIP with npm run release:source before publishing.' }
     if ($ValidateOnly) { Write-Output "Validated $tag, Firefox and Mozilla Store ZIPs, package contents, and SHA-256 checksums."; return }
     if (Invoke-GitChecked @('status', '--porcelain')) { throw 'Commit intended changes before publishing.' }
     $repository = (Invoke-GhChecked @('repo', 'view', '--json', 'nameWithOwner') | ConvertFrom-Json).nameWithOwner
