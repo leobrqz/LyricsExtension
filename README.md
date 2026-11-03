@@ -2,7 +2,7 @@
   <img src="src/icons/icon.svg" width="76" height="76" alt="Lyrics, Please icon">
 </p>
 
-<h1 align="center">Lyrics, Please</h1>
+<h1 align="center"><a href="https://lyricsplease.sourceforge.io/">Lyrics, Please</a></h1>
 
 <p align="center">
   Find the words. Keep your favorites. Read between the lines.
